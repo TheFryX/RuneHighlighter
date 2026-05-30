@@ -9,7 +9,7 @@ public class RuneHighlighterSettings : ISettings
 {
     public ToggleNode Enable { get; set; } = new ToggleNode(true);
 
-    [Menu("Panel 40 Fast Mode", "Starts from IngameUi.Root.Children[40] without scanning the whole UI.")]
+    [Menu("Dynamic Root Fast Mode", "Finds the reward panel root dynamically, e.g. root->1->39 or root->1->40, without scanning the whole UI.")]
     public ToggleNode Panel40FastMode { get; set; } = new ToggleNode(true);
 
     [Menu("Highlight Every Visible Reward", "ON = ignores the reward list and highlights everything visible. OFF = highlights only checked rewards.")]
@@ -20,7 +20,7 @@ public class RuneHighlighterSettings : ISettings
     [Menu("Scan Interval (ms)")]
     public RangeNode<int> ScanIntervalMs { get; set; } = new RangeNode<int>(80, 30, 2000);
 
-    [Menu("Panel 40 Local Depth", "Small local scan under panel 40 only, used when known paths do not work.")]
+    [Menu("Dynamic Root Local Depth", "Small local scan under detected reward root candidates only, used when known paths do not work.")]
     public RangeNode<int> Panel40LocalDepth { get; set; } = new RangeNode<int>(5, 2, 8);
 
     [Menu("Max Local Objects")]

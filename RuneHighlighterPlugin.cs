@@ -12,10 +12,10 @@ namespace RuneHighlighter;
 
 public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
 {
-    // Obie ścieżki wystąpiły w Twoich debugach:
-    // root->1->40->3->2->2->0
-    // root->1->40->3->2->1->0
-    // Po starcie z panelu 40 zostaje: 3->2->2->0 albo 3->2->1->0.
+    // Known reward-list paths relative to the expedition/runes panel root.
+    // Different users can have this root at root->1->39, root->1->40, etc.
+    // Once the correct root panel is found, the relative path is usually:
+    // 3->2->2->0 or 3->2->1->0.
     private static readonly int[][] KnownPanel40RelativePaths =
     {
         new[] { 3, 2, 2, 0 },
@@ -106,7 +106,7 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
     private void DrawDiagnosticsControls()
     {
         DrawToggle(Settings.DebugStats, "Enable Debug Overlay");
-        DrawToggle(Settings.Panel40FastMode, "Panel 40 Fast Mode");
+        DrawToggle(Settings.Panel40FastMode, "Dynamic Root Fast Mode");
         DrawToggle(Settings.DrawFullRow, "Draw Full Row");
 
         DrawIntSlider(Settings.ScanIntervalMs, "Scan Interval (ms)");
@@ -123,7 +123,7 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
         ImGui.Text($"Visible Reward Matches: {visibleRewards.Count}");
         ImGui.Text($"Mode: {mode}");
         ImGui.Text($"Status: {status}");
-        ImGui.Text($"Panels Found: {candidatePanels}");
+        ImGui.Text($"Reward Panels Checked: {candidatePanels}");
         ImGui.Text($"Rows Scanned: {scannedRows}");
         ImGui.Text($"Objects Scanned: {localScannedObjects}");
     }
@@ -313,42 +313,95 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
         }
 
         var root = GetPrimaryRoot();
-        var root1 = GetChild(root, 1);
-        var panel40 = GetChild(root1, 40) ?? GetChild(root, 40);
-
-        if (panel40 == null)
+        if (root == null)
         {
-            status = "panel 40 not found";
+            status = "root not found";
             return;
         }
 
-        // 1) Najpierw spróbuj dwóch znanych, tanich ścieżek.
-        foreach (var relativePath in KnownPanel40RelativePaths)
+        var candidateRoots = GetRewardRootCandidates(root).ToList();
+
+        if (candidateRoots.Count == 0)
         {
-            var panel = GetByPath(panel40, relativePath);
-            if (panel == null)
-                continue;
+            status = "no candidate root panels";
+            return;
+        }
 
-            candidatePanels++;
-            ScanRewardPanel(panel);
-
-            if (visibleRewards.Count > 0)
+        // 1) Try the known cheap relative paths under every candidate root.
+        foreach (var candidate in candidateRoots)
+        {
+            foreach (var relativePath in KnownPanel40RelativePaths)
             {
-                mode = "known-path";
-                status = "ok";
-                return;
+                var panel = GetByPath(candidate.Element, relativePath);
+                if (panel == null)
+                    continue;
+
+                candidatePanels++;
+                ScanRewardPanel(panel);
+
+                if (visibleRewards.Count > 0)
+                {
+                    mode = "known-path " + candidate.Path;
+                    status = "ok";
+                    return;
+                }
             }
         }
 
-        // 2) Jeśli ścieżka znowu się przesunie, szukamy tylko wewnątrz panelu 40.
-        mode = "local-scan-40";
-        var panels = FindRewardPanelsUnderPanel40(panel40).ToList();
-        candidatePanels += panels.Count;
+        // 2) If known paths do not work, do a small local scan only under candidate roots.
+        foreach (var candidate in candidateRoots)
+        {
+            mode = "local-scan " + candidate.Path;
 
-        foreach (var panel in panels)
-            ScanRewardPanel(panel);
+            var panels = FindRewardPanelsUnderPanel40(candidate.Element).ToList();
+            candidatePanels += panels.Count;
 
-        status = candidatePanels == 0 ? "no reward panel under 40" : "ok";
+            foreach (var panel in panels)
+                ScanRewardPanel(panel);
+
+            if (visibleRewards.Count > 0)
+            {
+                status = "ok";
+                return;
+            }
+
+            if (localScannedObjects > Settings.MaxLocalObjects.Value)
+                break;
+        }
+
+        status = "no reward panel under dynamic roots";
+    }
+
+
+    private IEnumerable<PanelCandidate> GetRewardRootCandidates(object root)
+    {
+        var yielded = new HashSet<int>();
+
+        object? root1 = GetChild(root, 1);
+
+        // Most common positions first: yours was root->1->40, friend's is root->1->39.
+        foreach (var index in new[] { 40, 39, 41, 38, 42 })
+        {
+            var candidate = GetChild(root1, index);
+            if (candidate != null && yielded.Add(ReferenceIdentity(candidate)))
+                yield return new PanelCandidate(candidate, "root->1->" + index);
+
+            candidate = GetChild(root, index);
+            if (candidate != null && yielded.Add(ReferenceIdentity(candidate)))
+                yield return new PanelCandidate(candidate, "root->" + index);
+        }
+
+        // Safe fallback: small range around the known area only, not the whole UI tree.
+        for (var index = 30; index <= 50; index++)
+        {
+            var candidate = GetChild(root1, index);
+            if (candidate != null && yielded.Add(ReferenceIdentity(candidate)))
+                yield return new PanelCandidate(candidate, "root->1->" + index);
+
+            candidate = GetChild(root, index);
+            if (candidate != null && yielded.Add(ReferenceIdentity(candidate)))
+                yield return new PanelCandidate(candidate, "root->" + index);
+        }
     }
 
     private IEnumerable<object> FindRewardPanelsUnderPanel40(object panel40)
@@ -722,4 +775,5 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
     }
 
     private readonly record struct VisibleReward(ExileCore2.Shared.RectangleF Rect, string Text);
+    private readonly record struct PanelCandidate(object Element, string Path);
 }
