@@ -590,9 +590,6 @@ public class RewardItemSettings
     [Menu("1x Warding Rune of Reinforcement")]
     public ToggleNode Reward__1x_Warding_Rune_of_Reinforcement { get; set; } = new ToggleNode(false);
 
-    [Menu("Verisium Pile")]
-    public ToggleNode Reward_Verisium_Pile { get; set; } = new ToggleNode(false);
-
     [Menu("2x Gemcutter's Prism")]
     public ToggleNode Reward__2x_Gemcutter_s_Prism { get; set; } = new ToggleNode(false);
 
@@ -853,5 +850,47 @@ public class RewardItemSettings
 
     [Menu("1x Orb of Augmentation")]
     public ToggleNode Reward__1x_Orb_of_Augmentation { get; set; } = new ToggleNode(false);
+
+    [Menu("1x The Runefather's Alloy")]
+    public ToggleNode Reward__1x_The_Runefather_s_Alloy { get; set; } = new ToggleNode(false);
+
+    [Menu("1x The Runebinder's Alloy")]
+    public ToggleNode Reward__1x_The_Runebinder_s_Alloy { get; set; } = new ToggleNode(false);
+
+    [Menu("1x Transcendent Alloy")]
+    public ToggleNode Reward__1x_Transcendent_Alloy { get; set; } = new ToggleNode(false);
+
+    [Menu("1x Celestial Alloy")]
+    public ToggleNode Reward__1x_Celestial_Alloy { get; set; } = new ToggleNode(false);
+
+    [Menu("1x Sovereign Alloy")]
+    public ToggleNode Reward__1x_Sovereign_Alloy { get; set; } = new ToggleNode(false);
+
+    [Menu("1x Thane Girt's Rune of Wildness")]
+    public ToggleNode Reward__1x_Thane_Girt_s_Rune_of_Wildness { get; set; } = new ToggleNode(false);
+
+    [Menu("1x Mystic Alloy")]
+    public ToggleNode Reward__1x_Mystic_Alloy { get; set; } = new ToggleNode(false);
+
+    [Menu("1x Prismatic Alloy")]
+    public ToggleNode Reward__1x_Prismatic_Alloy { get; set; } = new ToggleNode(false);
+
+    [Menu("1x Expansive Alloy")]
+    public ToggleNode Reward__1x_Expansive_Alloy { get; set; } = new ToggleNode(false);
+
+    [Menu("1x Cyclonic Alloy")]
+    public ToggleNode Reward__1x_Cyclonic_Alloy { get; set; } = new ToggleNode(false);
+
+    [Menu("1x Protective Alloy")]
+    public ToggleNode Reward__1x_Protective_Alloy { get; set; } = new ToggleNode(false);
+
+    [Menu("1x Adaptive Alloy")]
+    public ToggleNode Reward__1x_Adaptive_Alloy { get; set; } = new ToggleNode(false);
+
+    [Menu("2x Runic Alloy")]
+    public ToggleNode Reward__2x_Runic_Alloy { get; set; } = new ToggleNode(false);
+
+    [Menu("1x Runic Alloy")]
+    public ToggleNode Reward__1x_Runic_Alloy { get; set; } = new ToggleNode(false);
 
 }
