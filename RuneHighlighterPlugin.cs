@@ -5,10 +5,25 @@ using System.Drawing;
 using System.Linq;
 using System.Numerics;
 using System.Reflection;
+using System.Threading.Tasks;
+using System.Text.Json;
+using System.Net.Http;
 using ExileCore2;
 using ImGuiNET;
 
 namespace RuneHighlighter;
+
+public class PoeNinjaPriceSnapshot
+{
+    public string League { get; set; } = string.Empty;
+    public DateTime CreatedUtc { get; set; }
+    public bool DisplayInExaltedOrbs { get; set; }
+    public double ExaltedOrbRawValue { get; set; }
+    public double DivineOrbRawValue { get; set; }
+    // Raw poe.ninja prices. Display unit conversion is applied in memory only.
+    public Dictionary<string, double> Prices { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    public Dictionary<string, string> RawJsonByCategory { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+}
 
 public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
 {
@@ -26,6 +41,26 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
     private readonly HashSet<string> enabledItemNames = new(StringComparer.OrdinalIgnoreCase);
     private readonly List<VisibleReward> visibleRewards = new();
 
+    private static readonly HttpClient priceHttpClient = new();
+    private readonly Dictionary<string, double> priceCache = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, double> rawPriceCache = new(StringComparer.OrdinalIgnoreCase);
+    private readonly object priceLock = new();
+    private string appliedPriceUnitKey = string.Empty;
+    private DateTime lastPriceRefreshUtc = DateTime.MinValue;
+    private DateTime nextAllowedPriceRefreshUtc = DateTime.MinValue;
+    private bool priceRefreshRunning;
+    private string priceStatus = "not loaded";
+    private string detectedLeagueName = string.Empty;
+    private string lastPriceMiss = string.Empty;
+    private string leagueDetectStatus = "not checked";
+    private double exaltedOrbRawValue = 0;
+    private double divineOrbRawValue = 0;
+    private bool forcePriceRefreshRequested;
+    private int lastDownloadedCategories;
+    private int lastFailedCategories;
+    private int lastPriceHits;
+    private int lastPriceMisses;
+
     private DateTime lastScan = DateTime.MinValue;
     private int localScannedObjects;
     private int candidatePanels;
@@ -38,6 +73,7 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
     {
         Name = "RuneHighlighter";
         CacheRewardProperties();
+        TryLoadPriceCacheFromDisk();
         return base.Initialise();
     }
 
@@ -52,12 +88,67 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
             if ((now - lastScan).TotalMilliseconds >= Settings.ScanIntervalMs.Value)
             {
                 RebuildEnabledRewards();
+                lastPriceHits = 0;
+                lastPriceMisses = 0;
+                EnsureDisplayPriceModeApplied();
+                RefreshPricesIfNeeded();
                 ScanPanel40();
                 lastScan = now;
             }
 
+            var rankedRewards = visibleRewards
+                .Where(x => x.TotalValue > 0)
+                .OrderByDescending(x => x.TotalValue)
+                .ToList();
+
+            var topValue = rankedRewards.Count > 0 ? rankedRewards[0].TotalValue : 0;
+            var secondValue = rankedRewards.Count > 1 ? rankedRewards[1].TotalValue : 0;
+
             foreach (var reward in visibleRewards)
-                Graphics.DrawFrame(reward.Rect, Settings.FrameColor, Settings.FrameThickness.Value);
+            {
+                var isTopPick = Settings.HighlightMostValuableReward.Value && reward.TotalValue > 0 && Math.Abs(reward.TotalValue - topValue) < 0.001;
+                var isSecondPick = Settings.HighlightMostValuableReward.Value && reward.TotalValue > 0 && !isTopPick && Math.Abs(reward.TotalValue - secondValue) < 0.001;
+                var isAboveValue = Settings.HighlightRewardsAboveValue.Value && reward.TotalValue >= Settings.MinimumValueToHighlight.Value;
+
+                if (Settings.HighlightOnlyTopTwoPicks.Value && !isTopPick && !isSecondPick)
+                    continue;
+
+                if (Settings.HighlightOnlyRewardsAboveValue.Value &&
+                    (reward.TotalValue <= 0 || reward.TotalValue < Settings.MinimumValueToHighlight.Value))
+                    continue;
+
+                var frameColor = Settings.FrameColor;
+                var frameThickness = Settings.FrameThickness.Value;
+
+                if (isTopPick)
+                {
+                    frameColor = Settings.TopPickColor;
+                    frameThickness = Settings.TopPickFrameThickness.Value;
+                }
+                else if (isSecondPick)
+                {
+                    frameColor = Settings.SecondPickColor;
+                    frameThickness = Settings.TopPickFrameThickness.Value;
+                }
+                else if (isAboveValue)
+                {
+                    frameColor = Settings.FrameColor;
+                    frameThickness = Settings.TopPickFrameThickness.Value;
+                }
+
+                Graphics.DrawFrame(reward.Rect, frameColor, frameThickness);
+
+                if (Settings.ShowPriceOnReward.Value && reward.TotalValue > 0)
+                {
+                    var prefix = isTopPick ? "#1 " : isSecondPick ? "#2 " : string.Empty;
+
+                    Graphics.DrawTextWithBackground(
+                        prefix + (FormatRewardValue(reward.TotalValue)),
+                        new Vector2(reward.Rect.X + 6, reward.Rect.Y + 4),
+                        Color.White,
+                        Color.FromArgb(180, 0, 0, 0));
+                }
+            }
 
             if (Settings.DebugStats.Value)
             {
@@ -101,6 +192,14 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
     {
         DrawToggle(Settings.Enable, "Enable Plugin");
         DrawToggle(Settings.HighlightAllVisibleRewards, "Highlight Every Visible Reward (disables Item Filter and highlights all rewards)");
+        DrawToggle(Settings.EnablePriceApi, "Enable Price API");
+        DrawToggle(Settings.ShowPriceOnReward, "Show Price On Reward");
+        DrawToggle(Settings.DisplayPricesInExaltedOrbs, "Display Prices In Exalted Orbs");
+        DrawToggle(Settings.DisplayPricesInDivineOrbs, "Display Prices In Divine Orbs");
+        DrawToggle(Settings.HighlightMostValuableReward, "Highlight Most Valuable Reward");
+        DrawToggle(Settings.HighlightOnlyTopTwoPicks, "Highlight Only Top 2 Picks");
+        DrawToggle(Settings.HighlightOnlyRewardsAboveValue, "Highlight Only Rewards Above Value");
+        DrawIntSlider(Settings.MinimumValueToHighlight, $"Minimum Value To Highlight ({GetPriceDisplaySuffix().Trim()})");
     }
 
     private void DrawDiagnosticsControls()
@@ -110,6 +209,22 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
         DrawToggle(Settings.DrawFullRow, "Draw Full Row");
 
         DrawIntSlider(Settings.ScanIntervalMs, "Scan Interval (ms)");
+        DrawLeagueInput();
+        DrawIntSlider(Settings.PriceRefreshIntervalMinutes, "Price Refresh Interval Minutes");
+        DrawIntSlider(Settings.CacheAgeWarningMinutes, "Cache Age Warning Minutes");
+        if (ImGui.Button("Force Refresh Prices Now"))
+        {
+            forcePriceRefreshRequested = true;
+            nextAllowedPriceRefreshUtc = DateTime.MinValue;
+            lastPriceRefreshUtc = DateTime.MinValue;
+            priceStatus = "force refresh requested";
+        }
+        DrawToggle(Settings.PriceApiSafeMode, "Price API Safe Mode");
+        DrawIntSlider(Settings.PriceApiRequestDelayMs, "Price API Request Delay (ms)");
+        DrawIntSlider(Settings.PriceApi429CooldownMinutes, "429 Cooldown Minutes");
+        DrawToggle(Settings.HighlightRewardsAboveValue, "Highlight Rewards Above Value");
+        DrawIntSlider(Settings.MinimumValueToHighlight, "Minimum Value To Highlight");
+        DrawIntSlider(Settings.TopPickFrameThickness, "Top Pick Frame Thickness");
         DrawIntSlider(Settings.Panel40LocalDepth, "Panel 40 Local Depth");
         DrawIntSlider(Settings.MaxLocalObjects, "Max Local Objects");
         DrawIntSlider(Settings.MaxRewardRows, "Max Reward Rows");
@@ -117,10 +232,36 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
         DrawIntSlider(Settings.FrameThickness, "Frame Thickness");
 
         DrawColor(Settings.FrameColor, "Frame Color");
+        DrawColor(Settings.TopPickColor, "Top Pick Color");
+        DrawColor(Settings.SecondPickColor, "Second Pick Color");
 
         ImGui.Separator();
         ImGui.Text($"Enabled Reward Filters: {enabledItemNames.Count}");
         ImGui.Text($"Visible Reward Matches: {visibleRewards.Count}");
+        ImGui.Text($"Price Status: {priceStatus}");
+        ImGui.Text($"Display Price Cache Items: {priceCache.Count}");
+        ImGui.Text($"Raw Price Cache Items: {rawPriceCache.Count}");
+        ImGui.Text($"Applied Price Unit: {appliedPriceUnitKey}");
+        ImGui.Text($"Minimum Highlight Value: {Settings.MinimumValueToHighlight.Value:0.##}{GetPriceDisplaySuffix()}");
+        ImGui.Text($"Minimum Value Only Filter: {Settings.HighlightOnlyRewardsAboveValue.Value}");
+        ImGui.Text($"Downloaded Categories: {lastDownloadedCategories}, Failed Categories: {lastFailedCategories}");
+        ImGui.TextWrapped($"Cache File: {GetPriceCachePath()}");
+        ImGui.Text($"Exalted Orb Raw Value: {(exaltedOrbRawValue <= 0 ? "unknown" : exaltedOrbRawValue.ToString("0.####"))}");
+        ImGui.Text($"Divine Orb Raw Value: {(divineOrbRawValue <= 0 ? "unknown - use Force Refresh Prices Now after enabling Divine mode" : divineOrbRawValue.ToString("0.####"))}");
+        var cacheAge = GetPriceCacheAge();
+        if (cacheAge != TimeSpan.MaxValue)
+            ImGui.Text($"Price Cache Age: {cacheAge.TotalMinutes:0} minutes");
+        if (cacheAge != TimeSpan.MaxValue && cacheAge.TotalMinutes > Settings.CacheAgeWarningMinutes.Value)
+            ImGui.TextColored(new Vector4(1f, 0.25f, 0.25f, 1f), "WARNING: price cache is old. Use Force Refresh Prices Now.");
+
+        ImGui.Text($"Last Price Refresh Local: {(lastPriceRefreshUtc == DateTime.MinValue ? "never" : lastPriceRefreshUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss"))}");
+        ImGui.Text($"Last Price Refresh UTC: {(lastPriceRefreshUtc == DateTime.MinValue ? "never" : lastPriceRefreshUtc.ToString("u"))}");
+        ImGui.Text($"Next Allowed Refresh Local: {(nextAllowedPriceRefreshUtc == DateTime.MinValue ? "now" : nextAllowedPriceRefreshUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss"))}");
+        ImGui.Text($"League: {(string.IsNullOrWhiteSpace(detectedLeagueName) ? GetLeagueNameManualOrFallback() : detectedLeagueName)}");
+        ImGui.Text($"League Detect: {leagueDetectStatus}");
+        ImGui.Text($"Price Hits/Misses: {lastPriceHits}/{lastPriceMisses}");
+        if (!string.IsNullOrWhiteSpace(lastPriceMiss))
+            ImGui.Text($"Last Price Miss: {lastPriceMiss}");
         ImGui.Text($"Mode: {mode}");
         ImGui.Text($"Status: {status}");
         ImGui.Text($"Reward Panels Checked: {candidatePanels}");
@@ -203,12 +344,23 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
         }
     }
 
+
+    private void DrawLeagueInput()
+    {
+        var value = Convert.ToString(SafeGet(Settings.LeagueName, "Value")) ?? string.Empty;
+        ImGui.PushItemWidth(260);
+        if (ImGui.InputText("League Name", ref value, 128))
+            SetNodeValue(Settings.LeagueName, value);
+        ImGui.PopItemWidth();
+    }
+
     private static void DrawToggle(object? node, string label)
     {
         var value = SafeBool(node, "Value");
         if (ImGui.Checkbox(label, ref value))
             SetToggleValue(node, value);
     }
+
 
     private static void DrawIntSlider(object? node, string label)
     {
@@ -373,6 +525,787 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
     }
 
 
+
+    private void RefreshPricesIfNeeded()
+    {
+        if (!Settings.EnablePriceApi.Value)
+            return;
+
+        var now = DateTime.UtcNow;
+
+        if (!forcePriceRefreshRequested && nextAllowedPriceRefreshUtc > now)
+            return;
+
+        var interval = TimeSpan.FromMinutes(Math.Max(1, Settings.PriceRefreshIntervalMinutes.Value));
+
+        if (!forcePriceRefreshRequested && priceCache.Count > 0 && now - lastPriceRefreshUtc < interval)
+            return;
+
+        forcePriceRefreshRequested = false;
+
+        if (priceRefreshRunning)
+            return;
+
+        priceRefreshRunning = true;
+        priceStatus = "refreshing...";
+
+        Task.Run(async () =>
+        {
+            try
+            {
+                await RefreshPricesAsync();
+            }
+            catch (HttpRequestException ex)
+            {
+                priceStatus = "refresh failed: " + ex.Message;
+                nextAllowedPriceRefreshUtc = DateTime.UtcNow.AddMinutes(Settings.PriceApi429CooldownMinutes.Value);
+                TryLoadPriceCacheFromDisk();
+            }
+            catch (Exception ex)
+            {
+                priceStatus = "refresh failed: " + ex.Message;
+                nextAllowedPriceRefreshUtc = DateTime.UtcNow.AddMinutes(5);
+                TryLoadPriceCacheFromDisk();
+            }
+            finally
+            {
+                priceRefreshRunning = false;
+            }
+        });
+    }
+
+    private async Task RefreshPricesAsync()
+    {
+        var league = await GetLeagueNameAsync();
+        var rawPrices = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+        var snapshot = new PoeNinjaPriceSnapshot
+        {
+            League = league,
+            CreatedUtc = DateTime.UtcNow,
+            DisplayInExaltedOrbs = Settings.DisplayPricesInExaltedOrbs.Value || Settings.DisplayPricesInDivineOrbs.Value
+        };
+
+        var exchangeTypes = Settings.PriceApiSafeMode.Value
+            ? new[] { "Currency", "Runes", "Fragments", "Expedition", "UncutGems", "SoulCores", "Breach", "Ritual" }
+            : new[]
+            {
+                "Currency", "Runes", "Fragments", "Expedition", "UncutGems", "SoulCores",
+                "Breach", "Delirium", "Essences", "Ritual", "Abyss", "Verisium",
+                "LineageSupportGems", "Idols"
+            };
+
+        var stashTypes = Settings.PriceApiSafeMode.Value
+            ? Array.Empty<string>()
+            : new[]
+            {
+                "UniqueAccessory", "UniqueArmour", "UniqueWeapon", "UniqueFlask",
+                "UniqueJewel", "SkillGem", "Waystone", "Tablet"
+            };
+
+        lastDownloadedCategories = 0;
+        lastFailedCategories = 0;
+
+        foreach (var type in exchangeTypes)
+        {
+            var url = $"https://poe.ninja/poe2/api/economy/exchange/current/overview?league={Uri.EscapeDataString(league)}&type={Uri.EscapeDataString(type)}";
+
+            try
+            {
+                var json = await DownloadPoeNinjaStringAsync(url);
+                snapshot.RawJsonByCategory["exchange:" + type] = json;
+                ParseExchangeOverview(json, rawPrices);
+                lastDownloadedCategories++;
+            }
+            catch
+            {
+                lastFailedCategories++;
+                throw;
+            }
+
+            await Task.Delay(Settings.PriceApiRequestDelayMs.Value);
+        }
+
+        foreach (var type in stashTypes)
+        {
+            var url = $"https://poe.ninja/poe2/api/economy/stash/current/item/overview?league={Uri.EscapeDataString(league)}&type={Uri.EscapeDataString(type)}";
+
+            try
+            {
+                var json = await DownloadPoeNinjaStringAsync(url);
+                snapshot.RawJsonByCategory["stash:" + type] = json;
+                ParseStashOverview(json, rawPrices);
+                lastDownloadedCategories++;
+            }
+            catch
+            {
+                lastFailedCategories++;
+                throw;
+            }
+
+            await Task.Delay(Settings.PriceApiRequestDelayMs.Value);
+        }
+
+        UpdateRawCurrencyValues(rawPrices);
+
+        snapshot.Prices = rawPrices;
+        snapshot.ExaltedOrbRawValue = exaltedOrbRawValue;
+        snapshot.DivineOrbRawValue = divineOrbRawValue;
+
+        lock (priceLock)
+        {
+            rawPriceCache.Clear();
+            foreach (var kv in rawPrices)
+                rawPriceCache[kv.Key] = kv.Value;
+        }
+
+        ApplyDisplayPriceModeFromRawCache();
+
+        lastPriceRefreshUtc = snapshot.CreatedUtc;
+        priceStatus = $"loaded {rawPrices.Count} raw prices / {lastDownloadedCategories} categories for {league} ({GetPriceDisplayUnitLabel()})";
+        SavePriceSnapshotToDisk(snapshot);
+    }
+
+    private async Task<string> DownloadPoeNinjaStringAsync(string url)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, url);
+        request.Headers.UserAgent.ParseAdd("RuneHighlighter/1.0 ExileCore2 plugin");
+        request.Headers.Accept.ParseAdd("application/json");
+
+        using var response = await priceHttpClient.SendAsync(request);
+
+        if ((int)response.StatusCode == 429)
+        {
+            var retryAfter = response.Headers.RetryAfter?.Delta;
+            nextAllowedPriceRefreshUtc = DateTime.UtcNow.Add(retryAfter ?? TimeSpan.FromMinutes(Settings.PriceApi429CooldownMinutes.Value));
+            throw new HttpRequestException("429 Too Many Requests. Cooldown until " + nextAllowedPriceRefreshUtc.ToString("u"));
+        }
+
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadAsStringAsync();
+    }
+
+    private static double FindRawPrice(Dictionary<string, double> prices, params string[] names)
+    {
+        foreach (var name in names)
+        {
+            if (prices.TryGetValue(name, out var value) && value > 0)
+                return value;
+        }
+
+        foreach (var kv in prices)
+        {
+            foreach (var name in names)
+            {
+                if (string.Equals(kv.Key, name, StringComparison.OrdinalIgnoreCase) && kv.Value > 0)
+                    return kv.Value;
+
+                if (kv.Key.Contains(name, StringComparison.OrdinalIgnoreCase) && kv.Value > 0)
+                    return kv.Value;
+            }
+        }
+
+        return 0;
+    }
+
+    private void UpdateRawCurrencyValues(Dictionary<string, double> rawPrices)
+    {
+        exaltedOrbRawValue = FindRawPrice(rawPrices, "Exalted Orb", "exalted-orb", "exalted_orb");
+        divineOrbRawValue = FindRawPrice(rawPrices, "Divine Orb", "divine-orb", "divine_orb");
+    }
+
+    private Dictionary<string, double> BuildDisplayPricesFromRaw(Dictionary<string, double> rawPrices)
+    {
+        var prices = new Dictionary<string, double>(rawPrices, StringComparer.OrdinalIgnoreCase);
+
+        UpdateRawCurrencyValues(rawPrices);
+
+        if (Settings.DisplayPricesInDivineOrbs.Value)
+        {
+            if (divineOrbRawValue <= 0)
+            {
+                priceStatus = "divine mode failed: Divine Orb raw value not found in raw poe.ninja cache";
+                return prices;
+            }
+
+            var keys = prices.Keys.ToList();
+            foreach (var key in keys)
+                prices[key] = prices[key] / divineOrbRawValue;
+
+            prices["Divine Orb"] = 1.0;
+            if (exaltedOrbRawValue > 0)
+                prices["Exalted Orb"] = exaltedOrbRawValue / divineOrbRawValue;
+
+            return prices;
+        }
+
+        if (Settings.DisplayPricesInExaltedOrbs.Value)
+        {
+            if (exaltedOrbRawValue <= 0)
+            {
+                priceStatus = "exalted mode failed: Exalted Orb raw value not found in raw poe.ninja cache";
+                return prices;
+            }
+
+            var keys = prices.Keys.ToList();
+            foreach (var key in keys)
+                prices[key] = prices[key] / exaltedOrbRawValue;
+
+            prices["Exalted Orb"] = 1.0;
+            if (divineOrbRawValue > 0)
+                prices["Divine Orb"] = divineOrbRawValue / exaltedOrbRawValue;
+
+            return prices;
+        }
+
+        return prices;
+    }
+
+    private void ApplyDisplayPriceModeFromRawCache()
+    {
+        var unit = GetPriceDisplayUnitKey();
+
+        Dictionary<string, double> rawCopy;
+        lock (priceLock)
+        {
+            if (rawPriceCache.Count == 0)
+                return;
+
+            rawCopy = new Dictionary<string, double>(rawPriceCache, StringComparer.OrdinalIgnoreCase);
+        }
+
+        var displayPrices = BuildDisplayPricesFromRaw(rawCopy);
+
+        lock (priceLock)
+        {
+            priceCache.Clear();
+            foreach (var kv in displayPrices)
+                priceCache[kv.Key] = kv.Value;
+
+            appliedPriceUnitKey = unit;
+        }
+    }
+
+    private void EnsureDisplayPriceModeApplied()
+    {
+        var unit = GetPriceDisplayUnitKey();
+        if (string.Equals(unit, appliedPriceUnitKey, StringComparison.OrdinalIgnoreCase))
+            return;
+
+        ApplyDisplayPriceModeFromRawCache();
+    }
+
+    private void ParseExchangeOverview(string json, Dictionary<string, double> output)
+    {
+        using var doc = JsonDocument.Parse(json);
+
+        if (!doc.RootElement.TryGetProperty("items", out var items) ||
+            !doc.RootElement.TryGetProperty("lines", out var lines) ||
+            items.ValueKind != JsonValueKind.Array ||
+            lines.ValueKind != JsonValueKind.Array)
+            return;
+
+        var namesById = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var item in items.EnumerateArray())
+        {
+            var id = ReadString(item, "id");
+            var name = ReadString(item, "name");
+            if (!string.IsNullOrWhiteSpace(id) && !string.IsNullOrWhiteSpace(name))
+                namesById[id] = name;
+        }
+
+        foreach (var line in lines.EnumerateArray())
+        {
+            var id = ReadString(line, "id");
+            if (string.IsNullOrWhiteSpace(id) || !namesById.TryGetValue(id, out var name))
+                continue;
+
+            var value = ReadDouble(line, "primaryValue") ?? ReadDouble(line, "chaosEquivalent") ?? ReadDouble(line, "chaosValue");
+            if (value == null || value <= 0)
+                continue;
+
+            AddPriceAlias(output, name.Trim(), value.Value);
+
+            var detailsId = ReadString(line, "detailsId") ?? ReadString(line, "detailId");
+            if (!string.IsNullOrWhiteSpace(detailsId))
+                AddPriceAlias(output, detailsId.Trim(), value.Value);
+
+            var payName = ReadString(line, "payCurrencyTypeName");
+            if (!string.IsNullOrWhiteSpace(payName))
+                AddPriceAlias(output, payName.Trim(), value.Value);
+
+            var receiveName = ReadString(line, "receiveCurrencyTypeName");
+            if (!string.IsNullOrWhiteSpace(receiveName))
+                AddPriceAlias(output, receiveName.Trim(), value.Value);
+        }
+    }
+
+    private void ParseStashOverview(string json, Dictionary<string, double> output)
+    {
+        using var doc = JsonDocument.Parse(json);
+
+        if (!doc.RootElement.TryGetProperty("lines", out var lines) || lines.ValueKind != JsonValueKind.Array)
+            return;
+
+        foreach (var line in lines.EnumerateArray())
+        {
+            var name = ReadString(line, "baseType") ?? ReadString(line, "name");
+            var value = ReadDouble(line, "primaryValue") ?? ReadDouble(line, "chaosEquivalent") ?? ReadDouble(line, "chaosValue");
+
+            if (string.IsNullOrWhiteSpace(name) || value == null || value <= 0)
+                continue;
+
+            AddPriceAlias(output, name.Trim(), value.Value);
+
+            var detailsId = ReadString(line, "detailsId") ?? ReadString(line, "detailId");
+            if (!string.IsNullOrWhiteSpace(detailsId))
+                AddPriceAlias(output, detailsId.Trim(), value.Value);
+        }
+    }
+
+    private static void AddPriceAlias(Dictionary<string, double> output, string name, double value)
+    {
+        if (string.IsNullOrWhiteSpace(name) || value <= 0)
+            return;
+
+        name = CleanupText(name);
+        output[name] = value;
+
+        var normalized = NormalizePriceKey(name);
+        if (!string.IsNullOrWhiteSpace(normalized))
+            output[normalized] = value;
+
+        var isGreaterOrPerfectOrb =
+            name.EndsWith(" Orb", StringComparison.OrdinalIgnoreCase) &&
+            (name.StartsWith("Greater ", StringComparison.OrdinalIgnoreCase) ||
+             name.StartsWith("Perfect ", StringComparison.OrdinalIgnoreCase));
+
+        // Do NOT add base aliases for Greater/Perfect orbs.
+        // Example: Greater Exalted Orb must remain Greater Exalted Orb, not Exalted Orb.
+        if (!isGreaterOrPerfectOrb && name.Contains(" Rune", StringComparison.OrdinalIgnoreCase))
+        {
+            var noGreater = name.Replace("Greater ", "", StringComparison.OrdinalIgnoreCase).Trim();
+            var noLesser = name.Replace("Lesser ", "", StringComparison.OrdinalIgnoreCase).Trim();
+            output[noGreater] = value;
+            output[noLesser] = value;
+            output[noGreater.Replace(" Rune of ", " Rune ", StringComparison.OrdinalIgnoreCase)] = value;
+            output[noGreater.Replace(" Rune", "", StringComparison.OrdinalIgnoreCase)] = value;
+        }
+
+        var pretty = name.Replace("-", " ").Replace("_", " ").Trim();
+        if (!string.Equals(pretty, name, StringComparison.OrdinalIgnoreCase))
+            output[pretty] = value;
+    }
+
+    private static string NormalizePriceKey(string name)
+    {
+        name = CleanupText(name);
+        name = System.Text.RegularExpressions.Regex.Replace(name, @"^\d+\s*x\s+", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        name = System.Text.RegularExpressions.Regex.Replace(name, @"\s+\(Level\s+\d+\)$", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        return name.Trim();
+    }
+
+    private static string? ReadString(JsonElement element, string name)
+    {
+        return element.TryGetProperty(name, out var prop) && prop.ValueKind == JsonValueKind.String ? prop.GetString() : null;
+    }
+
+    private static double? ReadDouble(JsonElement element, string name)
+    {
+        if (!element.TryGetProperty(name, out var prop))
+            return null;
+
+        return prop.ValueKind switch
+        {
+            JsonValueKind.Number when prop.TryGetDouble(out var d) => d,
+            JsonValueKind.String when double.TryParse(prop.GetString(), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var d) => d,
+            _ => null
+        };
+    }
+
+    private (double UnitPrice, int StackSize, double TotalValue) GetRewardPrice(string rewardText)
+    {
+        if (!Settings.EnablePriceApi.Value)
+            return (0, 1, 0);
+
+        var (stack, name) = SplitRewardStack(rewardText);
+        if (string.IsNullOrWhiteSpace(name))
+            return (0, stack, 0);
+
+        var candidates = BuildPriceLookupCandidates(name);
+
+        lock (priceLock)
+        {
+            foreach (var candidate in candidates)
+            {
+                if (priceCache.TryGetValue(candidate, out var price))
+                {
+                    lastPriceHits++;
+                    return (price, stack, price * stack);
+                }
+            }
+        }
+
+        lastPriceMisses++;
+        lastPriceMiss = name;
+        return (0, stack, 0);
+    }
+
+    private static IEnumerable<string> BuildPriceLookupCandidates(string name)
+    {
+        name = CleanPriceLookupName(name);
+
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var yieldBuffer = new List<string>();
+
+        void Add(string? value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+                return;
+
+            value = CleanupText(value).Trim();
+            if (seen.Add(value))
+                yieldBuffer.Add(value);
+        }
+
+        Add(name);
+        Add(NormalizePriceKey(name));
+
+        var isGreaterOrPerfectOrb =
+            name.EndsWith(" Orb", StringComparison.OrdinalIgnoreCase) &&
+            (name.StartsWith("Greater ", StringComparison.OrdinalIgnoreCase) ||
+             name.StartsWith("Perfect ", StringComparison.OrdinalIgnoreCase));
+
+        // Critical fix:
+        // Greater Exalted Orb / Greater Chaos Orb / Perfect Exalted Orb must NOT fall back to
+        // Exalted Orb / Chaos Orb. That produced wrong values such as Greater Exalted Orb = 1 ex.
+        if (!isGreaterOrPerfectOrb)
+        {
+            var withoutGreater = name.Replace("Greater ", "", StringComparison.OrdinalIgnoreCase).Trim();
+            var withoutLesser = name.Replace("Lesser ", "", StringComparison.OrdinalIgnoreCase).Trim();
+            var withoutPerfect = name.Replace("Perfect ", "", StringComparison.OrdinalIgnoreCase).Trim();
+
+            Add(withoutGreater);
+            Add(withoutLesser);
+            Add(withoutPerfect);
+
+            if (name.Contains(" Rune", StringComparison.OrdinalIgnoreCase))
+            {
+                Add(withoutGreater);
+                Add(withoutLesser);
+                Add(withoutGreater.Replace(" Rune of ", " Rune ", StringComparison.OrdinalIgnoreCase));
+                Add(withoutGreater.Replace(" Rune", "", StringComparison.OrdinalIgnoreCase));
+                Add(name.Replace(" Rune of ", " Rune ", StringComparison.OrdinalIgnoreCase));
+                Add(name.Replace(" Rune", "", StringComparison.OrdinalIgnoreCase));
+            }
+        }
+
+        // Exact detailsId-like variants are safe because they still represent the same full item.
+        Add(name.Replace(" ", "-").ToLowerInvariant());
+        Add(name.Replace(" ", "_").ToLowerInvariant());
+
+        foreach (var item in yieldBuffer)
+            yield return item;
+    }
+
+    private static (int Stack, string Name) SplitRewardStack(string rewardText)
+    {
+        rewardText = CleanupText(rewardText);
+
+        var match = System.Text.RegularExpressions.Regex.Match(rewardText, @"^\s*(\d+)\s*x\s+(.+)$", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        if (match.Success && int.TryParse(match.Groups[1].Value, out var stack))
+            return (Math.Max(1, stack), match.Groups[2].Value.Trim());
+
+        return (1, rewardText);
+    }
+
+    private static string CleanPriceLookupName(string name)
+    {
+        name = CleanupText(name);
+        name = System.Text.RegularExpressions.Regex.Replace(name, @"\s+\(Level\s+\d+\)$", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        return name.Trim();
+    }
+
+    private string GetLeagueNameManualOrFallback()
+    {
+        var configured = Convert.ToString(SafeGet(Settings.LeagueName, "Value")) ?? string.Empty;
+        if (!string.IsNullOrWhiteSpace(configured))
+            return configured.Trim();
+
+        if (!string.IsNullOrWhiteSpace(detectedLeagueName))
+            return detectedLeagueName;
+
+        var fromGame = TryGetLeagueFromGame();
+        if (!string.IsNullOrWhiteSpace(fromGame))
+            return fromGame;
+
+        return "Standard";
+    }
+
+    private async Task<string> GetLeagueNameAsync()
+    {
+        var configured = Convert.ToString(SafeGet(Settings.LeagueName, "Value")) ?? string.Empty;
+        if (!string.IsNullOrWhiteSpace(configured))
+        {
+            detectedLeagueName = configured.Trim();
+            leagueDetectStatus = "manual";
+            return detectedLeagueName;
+        }
+
+        var fromGame = TryGetLeagueFromGame();
+        if (!string.IsNullOrWhiteSpace(fromGame))
+        {
+            detectedLeagueName = fromGame;
+            leagueDetectStatus = "game";
+            return detectedLeagueName;
+        }
+
+        if (!Settings.AutoDetectPoeNinjaLeague.Value)
+        {
+            detectedLeagueName = "Standard";
+            leagueDetectStatus = "auto disabled fallback";
+            return detectedLeagueName;
+        }
+
+        // poe.ninja endpoints have changed a few times; try all known variants.
+        foreach (var url in new[]
+        {
+            "https://poe.ninja/poe2/api/economy/leagues",
+            "https://poe.ninja/api/data/getindexstate",
+            "https://poe.ninja/poe2/api/data/getindexstate"
+        })
+        {
+            try
+            {
+                using var request = new HttpRequestMessage(HttpMethod.Get, url);
+                request.Headers.UserAgent.ParseAdd("RuneHighlighter/1.0 ExileCore2 plugin");
+                request.Headers.Accept.ParseAdd("application/json");
+
+                using var response = await priceHttpClient.SendAsync(request);
+                response.EnsureSuccessStatusCode();
+
+                var json = await response.Content.ReadAsStringAsync();
+                var league = TryParseLeagueFromJson(json);
+
+                if (!string.IsNullOrWhiteSpace(league))
+                {
+                    detectedLeagueName = league;
+                    leagueDetectStatus = "poe.ninja " + url;
+                    return detectedLeagueName;
+                }
+            }
+            catch (Exception ex)
+            {
+                leagueDetectStatus = "failed " + url + ": " + ex.Message;
+            }
+        }
+
+        detectedLeagueName = "Standard";
+        leagueDetectStatus = "fallback Standard";
+        return detectedLeagueName;
+    }
+
+    private string TryGetLeagueFromGame()
+    {
+        try
+        {
+            var candidates = new[]
+            {
+                SafeGet(GameController, "League"),
+                SafeGet(SafeGet(GameController, "Game"), "League"),
+                SafeGet(SafeGet(GameController, "Area"), "League"),
+                SafeGet(SafeGet(SafeGet(GameController, "Game"), "IngameState"), "League"),
+                SafeGet(SafeGet(SafeGet(GameController, "Game"), "IngameState"), "CurrentLeague"),
+                SafeGet(SafeGet(SafeGet(SafeGet(GameController, "Game"), "IngameState"), "ServerData"), "League"),
+                SafeGet(SafeGet(SafeGet(SafeGet(GameController, "Game"), "IngameState"), "Data"), "League")
+            };
+
+            foreach (var candidate in candidates)
+            {
+                var text = Convert.ToString(candidate);
+                if (IsValidLeagueName(text))
+                    return text!.Trim();
+            }
+        }
+        catch
+        {
+        }
+
+        return string.Empty;
+    }
+
+    private static bool IsValidLeagueName(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return false;
+
+        value = value.Trim();
+
+        if (value.Equals("Standard", StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        if (value.Length < 3 || value.Length > 80)
+            return false;
+
+        if (value.Contains("System.", StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        return true;
+    }
+
+    private static string TryParseLeagueFromJson(string json)
+    {
+        using var doc = JsonDocument.Parse(json);
+
+        var root = doc.RootElement;
+
+        foreach (var propName in new[] { "economyLeagues", "leagues", "currentLeagues" })
+        {
+            if (root.TryGetProperty(propName, out var arr) && arr.ValueKind == JsonValueKind.Array)
+            {
+                var league = PickLeagueFromArray(arr);
+                if (!string.IsNullOrWhiteSpace(league))
+                    return league;
+            }
+        }
+
+        if (root.ValueKind == JsonValueKind.Array)
+        {
+            var league = PickLeagueFromArray(root);
+            if (!string.IsNullOrWhiteSpace(league))
+                return league;
+        }
+
+        return string.Empty;
+    }
+
+    private static string PickLeagueFromArray(JsonElement arr)
+    {
+        string first = string.Empty;
+
+        foreach (var item in arr.EnumerateArray())
+        {
+            var name = ReadString(item, "name") ?? ReadString(item, "displayName") ?? ReadString(item, "id");
+            if (!IsValidLeagueName(name))
+                continue;
+
+            first = string.IsNullOrWhiteSpace(first) ? name!.Trim() : first;
+
+            var indexed = !item.TryGetProperty("indexed", out var indexedProp) || indexedProp.ValueKind != JsonValueKind.False;
+            var hardcore = item.TryGetProperty("hardcore", out var hcProp) && hcProp.ValueKind == JsonValueKind.True;
+
+            // Prefer indexed non-hardcore temporary leagues over Standard.
+            if (indexed && !hardcore && !name!.Equals("Standard", StringComparison.OrdinalIgnoreCase))
+                return name.Trim();
+        }
+
+        return first;
+    }
+
+    private string GetPriceDisplayUnitKey()
+    {
+        if (Settings.DisplayPricesInDivineOrbs.Value)
+            return "divine";
+
+        if (Settings.DisplayPricesInExaltedOrbs.Value)
+            return "exalt";
+
+        return "raw";
+    }
+
+    private string GetPriceDisplayUnitLabel()
+    {
+        if (Settings.DisplayPricesInDivineOrbs.Value)
+            return "divine units";
+
+        if (Settings.DisplayPricesInExaltedOrbs.Value)
+            return "exalted units";
+
+        return "raw poe.ninja units";
+    }
+
+    private string GetPriceDisplaySuffix()
+    {
+        if (Settings.DisplayPricesInDivineOrbs.Value)
+            return " div";
+
+        if (Settings.DisplayPricesInExaltedOrbs.Value)
+            return " ex";
+
+        return string.Empty;
+    }
+
+    private string FormatRewardValue(double value)
+    {
+        return $"{value:0.##}{GetPriceDisplaySuffix()}";
+    }
+
+    private TimeSpan GetPriceCacheAge()
+    {
+        if (lastPriceRefreshUtc == DateTime.MinValue)
+            return TimeSpan.MaxValue;
+
+        return DateTime.UtcNow - lastPriceRefreshUtc;
+    }
+
+    private string GetPriceCachePath()
+    {
+        var league = GetLeagueNameManualOrFallback();
+        var safeLeague = System.Text.RegularExpressions.Regex.Replace(league, @"[^A-Za-z0-9_\-]+", "_");
+        var dir = System.IO.Path.Combine(
+            AppDomain.CurrentDomain.BaseDirectory,
+            "config",
+            "RuneHighlighter",
+            "PriceCache");
+
+        System.IO.Directory.CreateDirectory(dir);
+
+        return System.IO.Path.Combine(dir, $"{safeLeague}_raw.json");
+    }
+
+    private void SavePriceSnapshotToDisk(PoeNinjaPriceSnapshot snapshot)
+    {
+        try
+        {
+            var options = new JsonSerializerOptions { WriteIndented = true };
+            System.IO.File.WriteAllText(GetPriceCachePath(), JsonSerializer.Serialize(snapshot, options));
+        }
+        catch
+        {
+        }
+    }
+
+    private void TryLoadPriceCacheFromDisk()
+    {
+        try
+        {
+            var path = GetPriceCachePath();
+            if (!System.IO.File.Exists(path))
+                return;
+
+            var loaded = JsonSerializer.Deserialize<PoeNinjaPriceSnapshot>(System.IO.File.ReadAllText(path));
+            if (loaded?.Prices == null || loaded.Prices.Count == 0)
+                return;
+
+            lock (priceLock)
+            {
+                rawPriceCache.Clear();
+                foreach (var kv in loaded.Prices)
+                    rawPriceCache[kv.Key] = kv.Value;
+            }
+
+            detectedLeagueName = loaded.League;
+            lastPriceRefreshUtc = loaded.CreatedUtc;
+            exaltedOrbRawValue = loaded.ExaltedOrbRawValue;
+            divineOrbRawValue = loaded.DivineOrbRawValue;
+            ApplyDisplayPriceModeFromRawCache();
+            priceStatus = $"loaded full JSON raw cache: {rawPriceCache.Count} prices / {loaded.RawJsonByCategory.Count} categories ({GetPriceDisplayUnitLabel()})";
+        }
+        catch
+        {
+        }
+    }
+
     private IEnumerable<PanelCandidate> GetRewardRootCandidates(object root)
     {
         var yielded = new HashSet<int>();
@@ -498,7 +1431,8 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
             if (visibleRewards.Any(x => SameRect(x.Rect, rect) || string.Equals(x.Text, text, StringComparison.OrdinalIgnoreCase)))
                 continue;
 
-            visibleRewards.Add(new VisibleReward(rect, text));
+            var priceInfo = GetRewardPrice(text);
+            visibleRewards.Add(new VisibleReward(rect, text, priceInfo.UnitPrice, priceInfo.StackSize, priceInfo.TotalValue));
         }
     }
 
@@ -774,6 +1708,6 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
         return System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(obj);
     }
 
-    private readonly record struct VisibleReward(ExileCore2.Shared.RectangleF Rect, string Text);
+    private readonly record struct VisibleReward(ExileCore2.Shared.RectangleF Rect, string Text, double UnitPrice, int StackSize, double TotalValue);
     private readonly record struct PanelCandidate(object Element, string Path);
 }

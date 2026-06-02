@@ -44,6 +44,63 @@ public class RuneHighlighterSettings : ISettings
     [Menu("Show Debug Overlay")]
     public ToggleNode DebugStats { get; set; } = new ToggleNode(false);
 
+    [Menu("Enable Price API", "Standalone poe.ninja price cache. No NinjaPricer bridge.")]
+    public ToggleNode EnablePriceApi { get; set; } = new ToggleNode(true);
+
+    [Menu("Auto Detect poe.ninja League", "When ON and League Name is empty, downloads poe.ninja league list and uses the first indexed PoE2 economy league.")]
+    public ToggleNode AutoDetectPoeNinjaLeague { get; set; } = new ToggleNode(true);
+
+    [Menu("League Name", "Optional manual poe.ninja PoE2 league name. Leave empty for auto-detect.")]
+    public TextNode LeagueName { get; set; } = new TextNode("");
+
+    [Menu("Price Refresh Interval Minutes")]
+    public RangeNode<int> PriceRefreshIntervalMinutes { get; set; } = new RangeNode<int>(30, 1, 240);
+
+    [Menu("Price API Safe Mode", "Downloads only the most relevant categories first to avoid poe.ninja 429 limits.")]
+    public ToggleNode PriceApiSafeMode { get; set; } = new ToggleNode(true);
+
+    [Menu("Price API Request Delay (ms)", "Delay between poe.ninja category requests.")]
+    public RangeNode<int> PriceApiRequestDelayMs { get; set; } = new RangeNode<int>(1500, 500, 8000);
+
+    [Menu("429 Cooldown Minutes", "How long to wait after poe.ninja returns Too Many Requests.")]
+    public RangeNode<int> PriceApi429CooldownMinutes { get; set; } = new RangeNode<int>(30, 5, 180);
+
+    [Menu("Cache Age Warning Minutes", "Diagnostics warning if price cache is older than this value.")]
+    public RangeNode<int> CacheAgeWarningMinutes { get; set; } = new RangeNode<int>(120, 30, 720);
+
+    [Menu("Show Price On Reward")]
+    public ToggleNode ShowPriceOnReward { get; set; } = new ToggleNode(true);
+
+    [Menu("Display Prices In Exalted Orbs", "ON = values are shown in Exalted Orb units.")]
+    public ToggleNode DisplayPricesInExaltedOrbs { get; set; } = new ToggleNode(true);
+
+    [Menu("Display Prices In Divine Orbs", "ON = values are shown in Divine Orb units. Takes priority over Exalted mode.")]
+    public ToggleNode DisplayPricesInDivineOrbs { get; set; } = new ToggleNode(false);
+
+    [Menu("Highlight Most Valuable Reward")]
+    public ToggleNode HighlightMostValuableReward { get; set; } = new ToggleNode(true);
+
+    [Menu("Highlight Rewards Above Value")]
+    public ToggleNode HighlightRewardsAboveValue { get; set; } = new ToggleNode(false);
+
+    [Menu("Minimum Value To Highlight", "Uses the currently selected price display unit: Exalted or Divine. Example: set 5 to highlight rewards worth at least 5 ex/div.")]
+    public RangeNode<int> MinimumValueToHighlight { get; set; } = new RangeNode<int>(10, 0, 1000);
+
+    [Menu("Top Pick Frame Thickness")]
+    public RangeNode<int> TopPickFrameThickness { get; set; } = new RangeNode<int>(6, 1, 15);
+
+    [Menu("Top Pick Color")]
+    public ColorNode TopPickColor { get; set; } = new ColorNode(Color.FromArgb(255, 200, 0, 255));
+
+    [Menu("Second Pick Color")]
+    public ColorNode SecondPickColor { get; set; } = new ColorNode(Color.FromArgb(255, 12, 0, 255));
+
+    [Menu("Highlight Only Top 2 Picks", "When ON, only the most valuable and second most valuable rewards are highlighted.")]
+    public ToggleNode HighlightOnlyTopTwoPicks { get; set; } = new ToggleNode(false);
+
+    [Menu("Highlight Only Rewards Above Value", "When ON, rewards below Minimum Value To Highlight are ignored. The value uses the selected unit: Exalted or Divine.")]
+    public ToggleNode HighlightOnlyRewardsAboveValue { get; set; } = new ToggleNode(false);
+
     [Menu("Reward Selection", "Checked rewards will be highlighted. Unchecked rewards will be ignored.")]
     public RewardItemSettings Rewards { get; set; } = new RewardItemSettings();
 }
@@ -892,5 +949,80 @@ public class RewardItemSettings
 
     [Menu("1x Runic Alloy")]
     public ToggleNode Reward__1x_Runic_Alloy { get; set; } = new ToggleNode(false);
+
+    [Menu("1x Ancient Rune of Witchcraft")]
+    public ToggleNode Reward_Ancient_Rune_of_Witchcraft { get; set; } = new ToggleNode(false);
+
+    [Menu("1x Ancient Rune of Decay")]
+    public ToggleNode Reward_Ancient_Rune_of_Decay { get; set; } = new ToggleNode(false);
+
+    [Menu("1x Ancient Rune of Discovery")]
+    public ToggleNode Reward_Ancient_Rune_of_Discovery { get; set; } = new ToggleNode(false);
+
+    [Menu("1x Ancient Rune of Control")]
+    public ToggleNode Reward_Ancient_Rune_of_Control { get; set; } = new ToggleNode(false);
+
+    [Menu("1x Ancient Rune of Prowess")]
+    public ToggleNode Reward_Ancient_Rune_of_Prowess { get; set; } = new ToggleNode(false);
+
+    [Menu("1x Ancient Rune of Shattering")]
+    public ToggleNode Reward_Ancient_Rune_of_Shattering { get; set; } = new ToggleNode(false);
+
+    [Menu("1x Ancient Rune of the Titan")]
+    public ToggleNode Reward_Ancient_Rune_of_the_Titan { get; set; } = new ToggleNode(false);
+
+    [Menu("1x Ancient Rune of Dueling")]
+    public ToggleNode Reward_Ancient_Rune_of_Dueling { get; set; } = new ToggleNode(false);
+
+    [Menu("1x Ancient Rune of Retaliation")]
+    public ToggleNode Reward_Ancient_Rune_of_Retaliation { get; set; } = new ToggleNode(false);
+
+    [Menu("1x Ancient Rune of Detonation")]
+    public ToggleNode Reward_Ancient_Rune_of_Detonation { get; set; } = new ToggleNode(false);
+
+    [Menu("1x Ancient Rune of Animosity")]
+    public ToggleNode Reward_Ancient_Rune_of_Animosity { get; set; } = new ToggleNode(false);
+
+    [Menu("1x Ancient Rune of the Horde")]
+    public ToggleNode Reward_Ancient_Rune_of_the_Horde { get; set; } = new ToggleNode(false);
+
+    [Menu("1x Ancient Rune of Splinters")]
+    public ToggleNode Reward_Ancient_Rune_of_Splinters { get; set; } = new ToggleNode(false);
+
+    [Menu("1x Uncut Skill Gem (Level 3)")]
+    public ToggleNode Reward_Uncut_Skill_Gem_Level_3 { get; set; } = new ToggleNode(false);
+
+    [Menu("1x Uncut Support Gem (Level 1)")]
+    public ToggleNode Reward_Uncut_Support_Gem_Level_1 { get; set; } = new ToggleNode(false);
+
+    [Menu("1x Uncut Skill Gem (Level 5)")]
+    public ToggleNode Reward_Uncut_Skill_Gem_Level_5 { get; set; } = new ToggleNode(false);
+
+    [Menu("1x Uncut Spirit Gem (Level 5)")]
+    public ToggleNode Reward_Uncut_Spirit_Gem_Level_5 { get; set; } = new ToggleNode(false);
+
+    [Menu("1x Uncut Support Gem (Level 2)")]
+    public ToggleNode Reward_Uncut_Support_Gem_Level_2 { get; set; } = new ToggleNode(false);
+
+    [Menu("1x Uncut Spirit Gem (Level 10)")]
+    public ToggleNode Reward_Uncut_Spirit_Gem_Level_10 { get; set; } = new ToggleNode(false);
+
+    [Menu("1x Uncut Support Gem (Level 3)")]
+    public ToggleNode Reward_Uncut_Support_Gem_Level_3 { get; set; } = new ToggleNode(false);
+
+    [Menu("1x Uncut Skill Gem (Level 9)")]
+    public ToggleNode Reward_Uncut_Skill_Gem_Level_9 { get; set; } = new ToggleNode(false);
+
+    [Menu("1x Medved's Crest of the Circle")]
+    public ToggleNode Reward_Medved_s_Crest_of_the_Circle { get; set; } = new ToggleNode(false);
+
+    [Menu("1x Uncut Spirit Gem (Level 11)")]
+    public ToggleNode Reward_Uncut_Spirit_Gem_Level_11 { get; set; } = new ToggleNode(false);
+
+    [Menu("1x Uncut Skill Gem (Level 11)")]
+    public ToggleNode Reward_Uncut_Skill_Gem_Level_11 { get; set; } = new ToggleNode(false);
+
+    [Menu("1x Uncut Support Gem (Level 4)")]
+    public ToggleNode Reward_Uncut_Support_Gem_Level_4 { get; set; } = new ToggleNode(false);
 
 }
