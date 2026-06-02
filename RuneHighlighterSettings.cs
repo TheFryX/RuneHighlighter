@@ -93,7 +93,7 @@ public class RuneHighlighterSettings : ISettings
     public ColorNode TopPickColor { get; set; } = new ColorNode(Color.FromArgb(255, 200, 0, 255));
 
     [Menu("Second Pick Color")]
-    public ColorNode SecondPickColor { get; set; } = new ColorNode(Color.FromArgb(255, 12, 0, 255));
+    public ColorNode SecondPickColor { get; set; } = new ColorNode(Color.FromArgb(255, 25, 203, 232));
 
     [Menu("Highlight Only Top 2 Picks", "When ON, only the most valuable and second most valuable rewards are highlighted.")]
     public ToggleNode HighlightOnlyTopTwoPicks { get; set; } = new ToggleNode(false);

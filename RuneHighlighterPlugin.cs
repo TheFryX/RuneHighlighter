@@ -1,3 +1,4 @@
+using ExileCore2.Shared.Nodes;
 using ExileCore2.Shared.Cache;
 using ExileCore2.PoEMemory.MemoryObjects;
 using ExileCore2.PoEMemory.FilesInMemory;
@@ -251,6 +252,18 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
 
         ImGui.Separator();
 
+        ImGui.Separator();
+        ImGui.Text("Colors");
+        DrawColor(Settings.FrameColor, "Frame Color");
+        DrawColor(Settings.TopPickColor, "Top Pick Color");
+        DrawColor(Settings.SecondPickColor, "Second Pick Color");
+
+        if (ImGui.Button("Reset Default Colors"))
+        {
+            Settings.FrameColor.Value = Color.FromArgb(255, 0, 255, 0);
+            Settings.TopPickColor.Value = Color.FromArgb(255, 192, 2, 250);
+            Settings.SecondPickColor.Value = Color.FromArgb(255, 25, 203, 232);
+        }
     }
 
     private void DrawPreOpenPreviewControls()
@@ -266,6 +279,35 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
         DrawIntSlider(Settings.PreviewOffsetX, "Pre-Open Preview Offset X");
         DrawIntSlider(Settings.PreviewOffsetY, "Pre-Open Preview Offset Y");
         DrawIntSlider(Settings.PreviewBackgroundOpacity, "Pre-Open Background Opacity");
+    }
+
+    private void DrawColor(ExileCore2.Shared.Nodes.ColorNode node, string label)
+    {
+        var color = node.Value;
+        var vector = new Vector4(color.R / 255f, color.G / 255f, color.B / 255f, color.A / 255f);
+        var popupId = $"##{label}_color_popup";
+
+        ImGui.Text($"{label}:");
+        ImGui.SameLine(180);
+
+        if (ImGui.ColorButton($"##{label}_button", vector, ImGuiColorEditFlags.NoTooltip, new Vector2(24, 18)))
+            ImGui.OpenPopup(popupId);
+
+        if (ImGui.BeginPopup(popupId))
+        {
+            if (ImGui.ColorPicker4($"##{label}_picker", ref vector,
+                    ImGuiColorEditFlags.NoSidePreview |
+                    ImGuiColorEditFlags.NoSmallPreview))
+            {
+                node.Value = Color.FromArgb(
+                    (int)Math.Clamp(vector.W * 255f, 0, 255),
+                    (int)Math.Clamp(vector.X * 255f, 0, 255),
+                    (int)Math.Clamp(vector.Y * 255f, 0, 255),
+                    (int)Math.Clamp(vector.Z * 255f, 0, 255));
+            }
+
+            ImGui.EndPopup();
+        }
     }
 
     private void DrawDiagnosticsControls()
