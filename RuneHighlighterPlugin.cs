@@ -1,3 +1,7 @@
+using ExileCore2.Shared.Cache;
+using ExileCore2.PoEMemory.MemoryObjects;
+using ExileCore2.PoEMemory.FilesInMemory;
+using ExileCore2.PoEMemory.Elements;
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -42,6 +46,18 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
     private readonly List<VisibleReward> visibleRewards = new();
 
     private static readonly HttpClient priceHttpClient = new();
+
+    private sealed class PreOpenPreviewEntry
+    {
+        public string Name { get; set; } = string.Empty;
+        public double Value { get; set; }
+        public int Count { get; set; } = 1;
+    }
+
+
+    private readonly List<(Vector2 Position, List<PreOpenPreviewEntry> Entries)> cachedPreOpenPreviewDraws = new();
+    private DateTime lastPreOpenPreviewCacheTime = DateTime.MinValue;
+
     private readonly Dictionary<string, double> priceCache = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, double> rawPriceCache = new(StringComparer.OrdinalIgnoreCase);
     private readonly object priceLock = new();
@@ -96,6 +112,11 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
                 lastScan = now;
             }
 
+            DrawPreOpenPreview();
+
+            UpdatePreOpenPreviewCache();
+            DrawPreOpenPreview();
+
             var rankedRewards = visibleRewards
                 .Where(x => x.TotalValue > 0)
                 .OrderByDescending(x => x.TotalValue)
@@ -108,7 +129,7 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
             {
                 var isTopPick = Settings.HighlightMostValuableReward.Value && reward.TotalValue > 0 && Math.Abs(reward.TotalValue - topValue) < 0.001;
                 var isSecondPick = Settings.HighlightMostValuableReward.Value && reward.TotalValue > 0 && !isTopPick && Math.Abs(reward.TotalValue - secondValue) < 0.001;
-                var isAboveValue = Settings.HighlightRewardsAboveValue.Value && reward.TotalValue >= Settings.MinimumValueToHighlight.Value;
+                var isAboveValue = false; // old standalone threshold highlight disabled; use Highlight Only Rewards Above Value instead
 
                 if (Settings.HighlightOnlyTopTwoPicks.Value && !isTopPick && !isSecondPick)
                     continue;
@@ -133,7 +154,7 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
                 else if (isAboveValue)
                 {
                     frameColor = Settings.FrameColor;
-                    frameThickness = Settings.TopPickFrameThickness.Value;
+                    frameThickness = Settings.FrameThickness.Value;
                 }
 
                 Graphics.DrawFrame(reward.Rect, frameColor, frameThickness);
@@ -170,11 +191,21 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
     {
         RebuildEnabledRewards();
 
-        DrawMainControls();
+        DrawGeneralControls();
 
         ImGui.Separator();
 
-        if (ImGui.CollapsingHeader("Reward Selection", ImGuiTreeNodeFlags.DefaultOpen))
+        if (ImGui.CollapsingHeader("UI Highlight", ImGuiTreeNodeFlags.DefaultOpen))
+        {
+            DrawUiHighlightControls();
+        }
+
+        if (ImGui.CollapsingHeader("Pre-Open Preview", ImGuiTreeNodeFlags.DefaultOpen))
+        {
+            DrawPreOpenPreviewControls();
+        }
+
+        if (ImGui.CollapsingHeader("Reward Selection"))
         {
             ImGui.Text("Checked rewards will be highlighted. Unchecked rewards will be ignored.");
             ImGui.Text("Type a name, for example divine, exalted, rune, or flux, to filter the list.");
@@ -190,16 +221,51 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
 
     private void DrawMainControls()
     {
+        DrawGeneralControls();
+
+        ImGui.Separator();
+
+        if (ImGui.CollapsingHeader("UI Highlight", ImGuiTreeNodeFlags.DefaultOpen))
+            DrawUiHighlightControls();
+
+        if (ImGui.CollapsingHeader("Pre-Open Preview", ImGuiTreeNodeFlags.DefaultOpen))
+            DrawPreOpenPreviewControls();
+    }
+
+    private void DrawGeneralControls()
+    {
         DrawToggle(Settings.Enable, "Enable Plugin");
-        DrawToggle(Settings.HighlightAllVisibleRewards, "Highlight Every Visible Reward (disables Item Filter and highlights all rewards)");
         DrawToggle(Settings.EnablePriceApi, "Enable Price API");
         DrawToggle(Settings.ShowPriceOnReward, "Show Price On Reward");
         DrawToggle(Settings.DisplayPricesInExaltedOrbs, "Display Prices In Exalted Orbs");
         DrawToggle(Settings.DisplayPricesInDivineOrbs, "Display Prices In Divine Orbs");
+    }
+
+    private void DrawUiHighlightControls()
+    {
+        DrawToggle(Settings.HighlightAllVisibleRewards, "Highlight Every Visible Reward (disables Item Filter and highlights all rewards)");
         DrawToggle(Settings.HighlightMostValuableReward, "Highlight Most Valuable Reward");
         DrawToggle(Settings.HighlightOnlyTopTwoPicks, "Highlight Only Top 2 Picks");
         DrawToggle(Settings.HighlightOnlyRewardsAboveValue, "Highlight Only Rewards Above Value");
-        DrawIntSlider(Settings.MinimumValueToHighlight, $"Minimum Value To Highlight ({GetPriceDisplaySuffix().Trim()})");
+        DrawIntSlider(Settings.MinimumValueToHighlight, "Minimum Value To Highlight");
+
+        ImGui.Separator();
+
+    }
+
+    private void DrawPreOpenPreviewControls()
+    {
+        DrawToggle(Settings.EnablePreOpenPreview, "Enable Pre-Open Preview");
+        DrawToggle(Settings.PreviewBestRewardOnly, "Preview Best Reward Only");
+        DrawToggle(Settings.PreviewTopTwoOnly, "Preview Top 2 Picks Only");
+        DrawToggle(Settings.PreviewUseMinimumValueFilter, "Preview Use Minimum Value Filter");
+        ImGui.TextDisabled("UI filters do not affect Pre-Open Preview. Use Preview options here.");
+
+        ImGui.Separator();
+
+        DrawIntSlider(Settings.PreviewOffsetX, "Pre-Open Preview Offset X");
+        DrawIntSlider(Settings.PreviewOffsetY, "Pre-Open Preview Offset Y");
+        DrawIntSlider(Settings.PreviewBackgroundOpacity, "Pre-Open Background Opacity");
     }
 
     private void DrawDiagnosticsControls()
@@ -222,18 +288,11 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
         DrawToggle(Settings.PriceApiSafeMode, "Price API Safe Mode");
         DrawIntSlider(Settings.PriceApiRequestDelayMs, "Price API Request Delay (ms)");
         DrawIntSlider(Settings.PriceApi429CooldownMinutes, "429 Cooldown Minutes");
-        DrawToggle(Settings.HighlightRewardsAboveValue, "Highlight Rewards Above Value");
-        DrawIntSlider(Settings.MinimumValueToHighlight, "Minimum Value To Highlight");
-        DrawIntSlider(Settings.TopPickFrameThickness, "Top Pick Frame Thickness");
         DrawIntSlider(Settings.Panel40LocalDepth, "Panel 40 Local Depth");
         DrawIntSlider(Settings.MaxLocalObjects, "Max Local Objects");
         DrawIntSlider(Settings.MaxRewardRows, "Max Reward Rows");
         DrawIntSlider(Settings.MinRewardPanelChildren, "Min Reward Panel Children");
-        DrawIntSlider(Settings.FrameThickness, "Frame Thickness");
 
-        DrawColor(Settings.FrameColor, "Frame Color");
-        DrawColor(Settings.TopPickColor, "Top Pick Color");
-        DrawColor(Settings.SecondPickColor, "Second Pick Color");
 
         ImGui.Separator();
         ImGui.Text($"Enabled Reward Filters: {enabledItemNames.Count}");
@@ -244,6 +303,9 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
         ImGui.Text($"Applied Price Unit: {appliedPriceUnitKey}");
         ImGui.Text($"Minimum Highlight Value: {Settings.MinimumValueToHighlight.Value:0.##}{GetPriceDisplaySuffix()}");
         ImGui.Text($"Minimum Value Only Filter: {Settings.HighlightOnlyRewardsAboveValue.Value}");
+        ImGui.Text($"Preview Mode: {(Settings.PreviewBestRewardOnly.Value ? "Best Reward Only" : Settings.PreviewTopTwoOnly.Value ? "Top 2 Picks" : "Full List")}");
+        ImGui.Text($"Pre-Open Preview Cached Labels: {cachedPreOpenPreviewDraws.Count}");
+        ImGui.Text($"Pre-Open Preview Cache UTC: {(lastPreOpenPreviewCacheTime == DateTime.MinValue ? "never" : lastPreOpenPreviewCacheTime.ToString("u"))}");
         ImGui.Text($"Downloaded Categories: {lastDownloadedCategories}, Failed Categories: {lastFailedCategories}");
         ImGui.TextWrapped($"Cache File: {GetPriceCachePath()}");
         ImGui.Text($"Exalted Orb Raw Value: {(exaltedOrbRawValue <= 0 ? "unknown" : exaltedOrbRawValue.ToString("0.####"))}");
@@ -361,7 +423,6 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
             SetToggleValue(node, value);
     }
 
-
     private static void DrawIntSlider(object? node, string label)
     {
         var value = GetInt(node, "Value");
@@ -447,6 +508,204 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
             var node = prop.GetValue(Settings.Rewards);
             if (SafeBool(node, "Value"))
                 enabledItemNames.Add(CleanupText(itemName));
+        }
+    }
+
+
+    private void UpdatePreOpenPreviewCache()
+    {
+        cachedPreOpenPreviewDraws.Clear();
+
+        if (!Settings.EnablePreOpenPreview.Value || !Settings.EnablePriceApi.Value)
+        {
+            return;
+        }
+
+        EnsureDisplayPriceModeApplied();
+
+        try
+        {
+            var hasEncounterEntity = GameController.EntityListWrapper.Entities.Any(x =>
+                x.Metadata.StartsWith("Metadata/MiscellaneousObjects/Expedition2/Expedition2Encounter", StringComparison.Ordinal));
+
+            if (!hasEncounterEntity)
+            {
+                return;
+            }
+
+            var labels = GameController.IngameState.IngameUi.ItemsOnGroundLabelsVisible
+                .Where(x => x?.ItemOnGround?.Metadata?.StartsWith("Metadata/MiscellaneousObjects/Expedition2/Expedition2Encounter", StringComparison.Ordinal) == true)
+                .Select(x => (GroundLabel: x, EncounterLabel: x.Label.AsObject<Expedition2EncounterLabel>()))
+                .Where(x => x.EncounterLabel != null)
+                .ToList();
+
+            if (labels.Count == 0)
+                return;
+
+            var areaLevel = GameController.IngameState.Data.CurrentAreaLevel;
+            var allRecipes = GameController.Files.Expedition2Recipes.EntriesList.ToLookup(x => x.RuneCountRequired);
+            var runeWeights = GameController.Files.Expedition2RunesWeights.EntriesList;
+
+            foreach (var (groundLabel, encounterLabel) in labels)
+            {
+                var entity = groundLabel.ItemOnGround;
+                if (entity == null)
+                    continue;
+
+                var allowedRuneCounts = runeWeights
+                    .Where(x => x.RuneSlot - 1 == encounterLabel.FixedRunePosition)
+                    .Where(x => x.Rune.Equals(encounterLabel.FixedRune))
+                    .Where(x => x.Level <= areaLevel)
+                    .Select(x => x.SlotCount)
+                    .ToHashSet();
+
+                var entries = allRecipes
+                    .Where(x => x.Key <= encounterLabel.RuneCount)
+                    .SelectMany(x => x)
+                    .Where(x => allowedRuneCounts.Contains(x.RuneCountRequired))
+                    .Where(x => x.MinLevelReq <= areaLevel && x.MaxLevelReq >= areaLevel)
+                    .Where(x => x.Runes.ElementAtOrDefault(encounterLabel.FixedRunePosition)?.Equals(encounterLabel.FixedRune) == true)
+                    .Select(ToPreOpenEntry)
+                    .Where(x => x != null)
+                    .Select(x => x!)
+                    .OrderByDescending(x => x.Value)
+                    .ToList();
+
+                if (Settings.PreviewUseMinimumValueFilter.Value)
+                {
+                    entries = entries
+                        .Where(x => x.Value >= Settings.MinimumValueToHighlight.Value)
+                        .ToList();
+                }
+                else if (Settings.PreviewMinimumValue.Value > 0)
+                {
+                    entries = entries
+                        .Where(x => x.Value >= Settings.PreviewMinimumValue.Value)
+                        .ToList();
+                }
+
+                if (Settings.PreviewBestRewardOnly.Value)
+                {
+                    entries = entries.Take(1).ToList();
+                }
+                else if (Settings.PreviewTopTwoOnly.Value)
+                {
+                    entries = entries.Take(2).ToList();
+                }
+                else
+                {
+                    entries = entries.Take(Settings.PreviewMaxLines.Value).ToList();
+                }
+
+                if (entries.Count == 0)
+                    continue;
+
+                var bottomLeft = encounterLabel.GetClientRect().BottomLeft;
+                var pos = new Vector2(bottomLeft.X + Settings.PreviewOffsetX.Value, bottomLeft.Y + Settings.PreviewOffsetY.Value);
+                cachedPreOpenPreviewDraws.Add((pos, entries));
+            }
+
+            lastPreOpenPreviewCacheTime = DateTime.UtcNow;
+        }
+        catch
+        {
+            // Preview is best-effort. Never break the main highlighter.
+        }
+    }
+
+
+    private void DrawPreOpenPreview()
+    {
+        if (!Settings.EnablePreOpenPreview.Value)
+            return;
+
+        foreach (var draw in cachedPreOpenPreviewDraws)
+            DrawPreOpenPreviewText(draw.Position, draw.Entries);
+    }
+
+
+    private static int GetRecipeRewardCount(Expedition2Recipe recipe)
+    {
+        try
+        {
+            var prop = recipe.GetType().GetProperty("RewardCount");
+            if (prop?.GetValue(recipe) is int i)
+                return Math.Max(1, i);
+
+            if (prop?.GetValue(recipe) is long l)
+                return (int)Math.Max(1, l);
+
+            if (prop?.GetValue(recipe) is double d)
+                return (int)Math.Max(1, d);
+
+            var method = recipe.GetType().GetMethod("RewardCount", Type.EmptyTypes);
+            if (method?.Invoke(recipe, null) is int mi)
+                return Math.Max(1, mi);
+
+            if (method?.Invoke(recipe, null) is long ml)
+                return (int)Math.Max(1, ml);
+
+            if (method?.Invoke(recipe, null) is double md)
+                return (int)Math.Max(1, md);
+        }
+        catch
+        {
+        }
+
+        return 1;
+    }
+
+    private PreOpenPreviewEntry? ToPreOpenEntry(Expedition2Recipe recipe)
+    {
+        if (recipe == null)
+            return null;
+
+        var name = string.IsNullOrWhiteSpace(recipe.Description) ? recipe.Reward?.BaseName : recipe.Description;
+        if (string.IsNullOrWhiteSpace(name))
+            return null;
+
+        if (!TryGetDisplayPriceForName(name, out var unitPrice))
+            return null;
+
+        var count = GetRecipeRewardCount(recipe);
+        return new PreOpenPreviewEntry
+        {
+            Name = name,
+            Count = count,
+            Value = unitPrice * count
+        };
+    }
+
+
+    private void DrawPreOpenPreviewBestReward(Vector2 pos, PreOpenPreviewEntry entry)
+    {
+        var line1 = $"[BEST] {FormatRewardValue(entry.Value)}";
+        var line2 = $"{entry.Name} x{entry.Count}";
+
+        var color = Settings.TopPickColor;
+        var bg = Color.FromArgb(225, 0, 0, 0);
+
+        var size1 = Graphics.DrawTextWithBackground(line1, pos, color, bg);
+        Graphics.DrawTextWithBackground(line2, new Vector2(pos.X, pos.Y + Math.Max(16, size1.Y)), color, bg);
+    }
+
+    private void DrawPreOpenPreviewText(Vector2 pos, List<PreOpenPreviewEntry> entries)
+    {
+        if (entries.Count == 1 && Settings.PreviewBestRewardOnly.Value)
+        {
+            DrawPreOpenPreviewBestReward(pos, entries[0]);
+            return;
+        }
+
+        var y = pos.Y;
+        for (var i = 0; i < entries.Count; i++)
+        {
+            var entry = entries[i];
+            var prefix = i == 0 ? "#1 " : i == 1 ? "#2 " : string.Empty;
+            var color = i == 0 ? Settings.TopPickColor : i == 1 ? Settings.SecondPickColor : Settings.FrameColor;
+            var text = $"{prefix}{FormatRewardValue(entry.Value)}  {entry.Name} x{entry.Count}";
+            var size = Graphics.DrawTextWithBackground(text, new Vector2(pos.X, y), color, Color.FromArgb(Settings.PreviewBackgroundOpacity.Value, 0, 0, 0));
+            y += Math.Max(14, size.Y);
         }
     }
 
@@ -586,7 +845,7 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
         };
 
         var exchangeTypes = Settings.PriceApiSafeMode.Value
-            ? new[] { "Currency", "Runes", "Fragments", "Expedition", "UncutGems", "SoulCores", "Breach", "Ritual" }
+            ? new[] { "Currency", "Runes", "Fragments", "Expedition", "UncutGems", "SoulCores", "Breach", "Ritual", "Verisium" }
             : new[]
             {
                 "Currency", "Runes", "Fragments", "Expedition", "UncutGems", "SoulCores",
@@ -705,6 +964,25 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
         }
 
         return 0;
+    }
+
+
+    private bool TryGetDisplayPriceForName(string name, out double value)
+    {
+        value = 0;
+        if (string.IsNullOrWhiteSpace(name))
+            return false;
+
+        foreach (var candidate in BuildPriceLookupCandidates(name))
+        {
+            lock (priceLock)
+            {
+                if (priceCache.TryGetValue(candidate, out value) && value > 0)
+                    return true;
+            }
+        }
+
+        return false;
     }
 
     private void UpdateRawCurrencyValues(Dictionary<string, double> rawPrices)
@@ -895,6 +1173,16 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
         var pretty = name.Replace("-", " ").Replace("_", " ").Trim();
         if (!string.Equals(pretty, name, StringComparison.OrdinalIgnoreCase))
             output[pretty] = value;
+        // Verisium category: Protective Alloy / Adaptive Alloy / Runic Alloy / Expansive Alloy.
+        // Keep the full Alloy name, but add common detailsId variants.
+        if (name.EndsWith(" Alloy", StringComparison.OrdinalIgnoreCase))
+        {
+            output[name.Replace(" ", "-").ToLowerInvariant()] = value;
+            output[name.Replace(" ", "_").ToLowerInvariant()] = value;
+            output[name.Replace(" ", "").ToLowerInvariant()] = value;
+        }
+
+
     }
 
     private static string NormalizePriceKey(string name)
@@ -1003,6 +1291,15 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
         // Exact detailsId-like variants are safe because they still represent the same full item.
         Add(name.Replace(" ", "-").ToLowerInvariant());
         Add(name.Replace(" ", "_").ToLowerInvariant());
+        if (name.EndsWith(" Alloy", StringComparison.OrdinalIgnoreCase))
+        {
+            Add(name.Replace(" Alloy", "", StringComparison.OrdinalIgnoreCase).Trim());
+            Add(name.Replace(" ", "").ToLowerInvariant());
+            Add(name.Replace(" ", "-").ToLowerInvariant());
+            Add(name.Replace(" ", "_").ToLowerInvariant());
+        }
+
+
 
         foreach (var item in yieldBuffer)
             yield return item;

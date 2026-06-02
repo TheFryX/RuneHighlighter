@@ -101,6 +101,33 @@ public class RuneHighlighterSettings : ISettings
     [Menu("Highlight Only Rewards Above Value", "When ON, rewards below Minimum Value To Highlight are ignored. The value uses the selected unit: Exalted or Divine.")]
     public ToggleNode HighlightOnlyRewardsAboveValue { get; set; } = new ToggleNode(false);
 
+    [Menu("Enable Pre-Open Preview", "Shows exact priced Expedition2 reward preview near encounter labels before opening the reward UI.")]
+    public ToggleNode EnablePreOpenPreview { get; set; } = new ToggleNode(true);
+
+    [Menu("Preview Best Reward Only", "Shows only the single most valuable possible reward in the pre-open preview.")]
+    public ToggleNode PreviewBestRewardOnly { get; set; } = new ToggleNode(true);
+
+    [Menu("Preview Top 2 Picks Only", "Shows only the best two possible rewards. Ignored when Preview Best Reward Only is ON.")]
+    public ToggleNode PreviewTopTwoOnly { get; set; } = new ToggleNode(false);
+
+    [Menu("Preview Use Minimum Value Filter", "Uses Minimum Value To Highlight for pre-open preview. Example: 5 in Exalted mode means show only rewards worth at least 5 ex.")]
+    public ToggleNode PreviewUseMinimumValueFilter { get; set; } = new ToggleNode(false);
+
+    [Menu("Preview Max Lines")]
+    public RangeNode<int> PreviewMaxLines { get; set; } = new RangeNode<int>(8, 1, 20);
+
+    [Menu("Preview Minimum Value", "Uses selected price unit: Exalted or Divine.")]
+    public RangeNode<float> PreviewMinimumValue { get; set; } = new RangeNode<float>(0f, 0f, 100f);
+
+    [Menu("Preview Offset X")]
+    public RangeNode<int> PreviewOffsetX { get; set; } = new RangeNode<int>(35, -400, 600);
+
+    [Menu("Preview Offset Y")]
+    public RangeNode<int> PreviewOffsetY { get; set; } = new RangeNode<int>(-35, -400, 400);
+
+    [Menu("Pre-Open Background Opacity")]
+    public RangeNode<int> PreviewBackgroundOpacity { get; set; } = new RangeNode<int>(180, 0, 255);
+
     [Menu("Reward Selection", "Checked rewards will be highlighted. Unchecked rewards will be ignored.")]
     public RewardItemSettings Rewards { get; set; } = new RewardItemSettings();
 }
