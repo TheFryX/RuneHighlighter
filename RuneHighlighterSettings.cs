@@ -135,921 +135,921 @@ public class RuneHighlighterSettings : ISettings
 public class RewardItemSettings
 {
     [Menu("1x Aldur's Legacy")]
-    public ToggleNode Reward__1x_Aldur_s_Legacy { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Aldur_s_Legacy { get; set; } = new ToggleNode(true);
 
     [Menu("1x Medved's Boon")]
-    public ToggleNode Reward__1x_Medved_s_Boon { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Medved_s_Boon { get; set; } = new ToggleNode(true);
 
     [Menu("1x Uhtred's Boon")]
-    public ToggleNode Reward__1x_Uhtred_s_Boon { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Uhtred_s_Boon { get; set; } = new ToggleNode(true);
 
     [Menu("1x Vorana's Boon")]
-    public ToggleNode Reward__1x_Vorana_s_Boon { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Vorana_s_Boon { get; set; } = new ToggleNode(true);
 
     [Menu("1x Olroth's Boon")]
-    public ToggleNode Reward__1x_Olroth_s_Boon { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Olroth_s_Boon { get; set; } = new ToggleNode(true);
 
     [Menu("Krillson's Bay Key")]
-    public ToggleNode Reward_Krillson_s_Bay_Key { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward_Krillson_s_Bay_Key { get; set; } = new ToggleNode(true);
 
     [Menu("1x Mirror of Kalandra")]
-    public ToggleNode Reward__1x_Mirror_of_Kalandra { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Mirror_of_Kalandra { get; set; } = new ToggleNode(true);
 
     [Menu("1x Hinekora's Lock")]
-    public ToggleNode Reward__1x_Hinekora_s_Lock { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Hinekora_s_Lock { get; set; } = new ToggleNode(true);
 
     [Menu("3x Perfect Chaos Orb")]
-    public ToggleNode Reward__3x_Perfect_Chaos_Orb { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__3x_Perfect_Chaos_Orb { get; set; } = new ToggleNode(true);
 
     [Menu("3x Perfect Exalted Orb")]
-    public ToggleNode Reward__3x_Perfect_Exalted_Orb { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__3x_Perfect_Exalted_Orb { get; set; } = new ToggleNode(true);
 
     [Menu("10x Divine Orb")]
-    public ToggleNode Reward__10x_Divine_Orb { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__10x_Divine_Orb { get; set; } = new ToggleNode(true);
 
     [Menu("3x Orb of Annulment")]
-    public ToggleNode Reward__3x_Orb_of_Annulment { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__3x_Orb_of_Annulment { get; set; } = new ToggleNode(true);
 
     [Menu("3x Orb of Chance")]
-    public ToggleNode Reward__3x_Orb_of_Chance { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__3x_Orb_of_Chance { get; set; } = new ToggleNode(true);
 
     [Menu("Very Rare Unique item")]
-    public ToggleNode Reward_Very_Rare_Unique_item { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward_Very_Rare_Unique_item { get; set; } = new ToggleNode(true);
 
     [Menu("1x Perfect Flux")]
-    public ToggleNode Reward__1x_Perfect_Flux { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Perfect_Flux { get; set; } = new ToggleNode(true);
 
     [Menu("3x Perfect Regal Orb")]
-    public ToggleNode Reward__3x_Perfect_Regal_Orb { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__3x_Perfect_Regal_Orb { get; set; } = new ToggleNode(true);
 
     [Menu("3x Perfect Orb of Transmutation")]
-    public ToggleNode Reward__3x_Perfect_Orb_of_Transmutation { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__3x_Perfect_Orb_of_Transmutation { get; set; } = new ToggleNode(true);
 
     [Menu("3x Perfect Orb of Augmentation")]
-    public ToggleNode Reward__3x_Perfect_Orb_of_Augmentation { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__3x_Perfect_Orb_of_Augmentation { get; set; } = new ToggleNode(true);
 
     [Menu("1x Serle's Triumph")]
-    public ToggleNode Reward__1x_Serle_s_Triumph { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Serle_s_Triumph { get; set; } = new ToggleNode(true);
 
     [Menu("1x Uhtred's Sidereus")]
-    public ToggleNode Reward__1x_Uhtred_s_Sidereus { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Uhtred_s_Sidereus { get; set; } = new ToggleNode(true);
 
     [Menu("1x Medved's Tending")]
-    public ToggleNode Reward__1x_Medved_s_Tending { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Medved_s_Tending { get; set; } = new ToggleNode(true);
 
     [Menu("1x Kolr's Hunt")]
-    public ToggleNode Reward__1x_Kolr_s_Hunt { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Kolr_s_Hunt { get; set; } = new ToggleNode(true);
 
     [Menu("1x Thrud's Might")]
-    public ToggleNode Reward__1x_Thrud_s_Might { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Thrud_s_Might { get; set; } = new ToggleNode(true);
 
     [Menu("1x Katla's Gloom")]
-    public ToggleNode Reward__1x_Katla_s_Gloom { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Katla_s_Gloom { get; set; } = new ToggleNode(true);
 
     [Menu("1x Vorana's Carnage")]
-    public ToggleNode Reward__1x_Vorana_s_Carnage { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Vorana_s_Carnage { get; set; } = new ToggleNode(true);
 
     [Menu("1x Cadigan's Epiphany")]
-    public ToggleNode Reward__1x_Cadigan_s_Epiphany { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Cadigan_s_Epiphany { get; set; } = new ToggleNode(true);
 
     [Menu("1x Betrayal of Aldur")]
-    public ToggleNode Reward__1x_Betrayal_of_Aldur { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Betrayal_of_Aldur { get; set; } = new ToggleNode(true);
 
     [Menu("1x Astrid's Creativity")]
-    public ToggleNode Reward__1x_Astrid_s_Creativity { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Astrid_s_Creativity { get; set; } = new ToggleNode(true);
 
     [Menu("1x Ire of Aldur")]
-    public ToggleNode Reward__1x_Ire_of_Aldur { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Ire_of_Aldur { get; set; } = new ToggleNode(true);
 
     [Menu("1x Passion of Aldur")]
-    public ToggleNode Reward__1x_Passion_of_Aldur { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Passion_of_Aldur { get; set; } = new ToggleNode(true);
 
     [Menu("1x Breath of Aldur")]
-    public ToggleNode Reward__1x_Breath_of_Aldur { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Breath_of_Aldur { get; set; } = new ToggleNode(true);
 
     [Menu("2x Orb of Annulment")]
-    public ToggleNode Reward__2x_Orb_of_Annulment { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__2x_Orb_of_Annulment { get; set; } = new ToggleNode(true);
 
     [Menu("1x Aldur's Saga")]
-    public ToggleNode Reward__1x_Aldur_s_Saga { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Aldur_s_Saga { get; set; } = new ToggleNode(true);
 
     [Menu("1x Thaumaturgic Flux (Level 20)")]
-    public ToggleNode Reward__1x_Thaumaturgic_Flux_Level_20 { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Thaumaturgic_Flux_Level_20 { get; set; } = new ToggleNode(true);
 
     [Menu("1x Orb of Annulment")]
-    public ToggleNode Reward__1x_Orb_of_Annulment { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Orb_of_Annulment { get; set; } = new ToggleNode(true);
 
     [Menu("2x Orb of Chance")]
-    public ToggleNode Reward__2x_Orb_of_Chance { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__2x_Orb_of_Chance { get; set; } = new ToggleNode(true);
 
     [Menu("1x Perfect Chaos Orb")]
-    public ToggleNode Reward__1x_Perfect_Chaos_Orb { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Perfect_Chaos_Orb { get; set; } = new ToggleNode(true);
 
     [Menu("3x Divine Orb")]
-    public ToggleNode Reward__3x_Divine_Orb { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__3x_Divine_Orb { get; set; } = new ToggleNode(true);
 
     [Menu("1x Uncut Skill Gem (Level 20)")]
-    public ToggleNode Reward__1x_Uncut_Skill_Gem_Level_20 { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Uncut_Skill_Gem_Level_20 { get; set; } = new ToggleNode(true);
 
     [Menu("1x Uncut Spirit Gem (Level 20)")]
-    public ToggleNode Reward__1x_Uncut_Spirit_Gem_Level_20 { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Uncut_Spirit_Gem_Level_20 { get; set; } = new ToggleNode(true);
 
     [Menu("1x Void Flux")]
-    public ToggleNode Reward__1x_Void_Flux { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Void_Flux { get; set; } = new ToggleNode(true);
 
     [Menu("1x Perfect Exalted Orb")]
-    public ToggleNode Reward__1x_Perfect_Exalted_Orb { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Perfect_Exalted_Orb { get; set; } = new ToggleNode(true);
 
     [Menu("1x Farrul's Rune of the Chase")]
-    public ToggleNode Reward__1x_Farrul_s_Rune_of_the_Chase { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Farrul_s_Rune_of_the_Chase { get; set; } = new ToggleNode(true);
 
     [Menu("1x Hedgewitch Assandra's Rune of Wisdom")]
-    public ToggleNode Reward__1x_Hedgewitch_Assandra_s_Rune_of_Wisdom { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Hedgewitch_Assandra_s_Rune_of_Wisdom { get; set; } = new ToggleNode(true);
 
     [Menu("1x Countess Seske's Rune of Archery")]
-    public ToggleNode Reward__1x_Countess_Seske_s_Rune_of_Archery { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Countess_Seske_s_Rune_of_Archery { get; set; } = new ToggleNode(true);
 
     [Menu("1x Crackling Flux")]
-    public ToggleNode Reward__1x_Crackling_Flux { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Crackling_Flux { get; set; } = new ToggleNode(true);
 
     [Menu("1x Blazing Flux")]
-    public ToggleNode Reward__1x_Blazing_Flux { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Blazing_Flux { get; set; } = new ToggleNode(true);
 
     [Menu("1x Chilling Flux")]
-    public ToggleNode Reward__1x_Chilling_Flux { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Chilling_Flux { get; set; } = new ToggleNode(true);
 
     [Menu("Skill: Wardbound Minions")]
-    public ToggleNode Reward_Skill_Wardbound_Minions { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward_Skill_Wardbound_Minions { get; set; } = new ToggleNode(true);
 
     [Menu("Skill: Voltaic Barrier")]
-    public ToggleNode Reward_Skill_Voltaic_Barrier { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward_Skill_Voltaic_Barrier { get; set; } = new ToggleNode(true);
 
     [Menu("Skill: Hollow Shell")]
-    public ToggleNode Reward_Skill_Hollow_Shell { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward_Skill_Hollow_Shell { get; set; } = new ToggleNode(true);
 
     [Menu("Skill: Explosive Transmutation")]
-    public ToggleNode Reward_Skill_Explosive_Transmutation { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward_Skill_Explosive_Transmutation { get; set; } = new ToggleNode(true);
 
     [Menu("Skill: Animus Splinters")]
-    public ToggleNode Reward_Skill_Animus_Splinters { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward_Skill_Animus_Splinters { get; set; } = new ToggleNode(true);
 
     [Menu("1x Olroth's Saga")]
-    public ToggleNode Reward__1x_Olroth_s_Saga { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Olroth_s_Saga { get; set; } = new ToggleNode(true);
 
     [Menu("1x Vorana's Saga")]
-    public ToggleNode Reward__1x_Vorana_s_Saga { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Vorana_s_Saga { get; set; } = new ToggleNode(true);
 
     [Menu("1x Uhtred's Saga")]
-    public ToggleNode Reward__1x_Uhtred_s_Saga { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Uhtred_s_Saga { get; set; } = new ToggleNode(true);
 
     [Menu("1x Medved's Saga")]
-    public ToggleNode Reward__1x_Medved_s_Saga { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Medved_s_Saga { get; set; } = new ToggleNode(true);
 
     [Menu("3x Greater Regal Orb")]
-    public ToggleNode Reward__3x_Greater_Regal_Orb { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__3x_Greater_Regal_Orb { get; set; } = new ToggleNode(true);
 
     [Menu("3x Greater Chaos Orb")]
-    public ToggleNode Reward__3x_Greater_Chaos_Orb { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__3x_Greater_Chaos_Orb { get; set; } = new ToggleNode(true);
 
     [Menu("3x Greater Exalted Orb")]
-    public ToggleNode Reward__3x_Greater_Exalted_Orb { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__3x_Greater_Exalted_Orb { get; set; } = new ToggleNode(true);
 
     [Menu("Skill: Skyfall")]
-    public ToggleNode Reward_Skill_Skyfall { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward_Skill_Skyfall { get; set; } = new ToggleNode(true);
 
     [Menu("Skill: Triskelion Cascade")]
-    public ToggleNode Reward_Skill_Triskelion_Cascade { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward_Skill_Triskelion_Cascade { get; set; } = new ToggleNode(true);
 
     [Menu("Skill: Refutation")]
-    public ToggleNode Reward_Skill_Refutation { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward_Skill_Refutation { get; set; } = new ToggleNode(true);
 
     [Menu("Skill: Runic Reprieve")]
-    public ToggleNode Reward_Skill_Runic_Reprieve { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward_Skill_Runic_Reprieve { get; set; } = new ToggleNode(true);
 
     [Menu("Skill: Leylines")]
-    public ToggleNode Reward_Skill_Leylines { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward_Skill_Leylines { get; set; } = new ToggleNode(true);
 
     [Menu("Skill: Animus Exchange")]
-    public ToggleNode Reward_Skill_Animus_Exchange { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward_Skill_Animus_Exchange { get; set; } = new ToggleNode(true);
 
     [Menu("1x Thaumaturgic Flux (Level 19)")]
-    public ToggleNode Reward__1x_Thaumaturgic_Flux_Level_19 { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Thaumaturgic_Flux_Level_19 { get; set; } = new ToggleNode(true);
 
     [Menu("2x Divine Orb")]
-    public ToggleNode Reward__2x_Divine_Orb { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__2x_Divine_Orb { get; set; } = new ToggleNode(true);
 
     [Menu("1x Courtesan Mannan's Rune of Cruelty")]
-    public ToggleNode Reward__1x_Courtesan_Mannan_s_Rune_of_Cruelty { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Courtesan_Mannan_s_Rune_of_Cruelty { get; set; } = new ToggleNode(true);
 
     [Menu("1x Saqawal's Rune of Memory")]
-    public ToggleNode Reward__1x_Saqawal_s_Rune_of_Memory { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Saqawal_s_Rune_of_Memory { get; set; } = new ToggleNode(true);
 
     [Menu("1x Thane Grannell's Rune of Mastery")]
-    public ToggleNode Reward__1x_Thane_Grannell_s_Rune_of_Mastery { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Thane_Grannell_s_Rune_of_Mastery { get; set; } = new ToggleNode(true);
 
     [Menu("1x Perfect Orb of Transmutation")]
-    public ToggleNode Reward__1x_Perfect_Orb_of_Transmutation { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Perfect_Orb_of_Transmutation { get; set; } = new ToggleNode(true);
 
     [Menu("1x Perfect Orb of Augmentation")]
-    public ToggleNode Reward__1x_Perfect_Orb_of_Augmentation { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Perfect_Orb_of_Augmentation { get; set; } = new ToggleNode(true);
 
     [Menu("1x Farrul's Rune of Grace")]
-    public ToggleNode Reward__1x_Farrul_s_Rune_of_Grace { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Farrul_s_Rune_of_Grace { get; set; } = new ToggleNode(true);
 
     [Menu("1x Fenumus' Rune of Agony")]
-    public ToggleNode Reward__1x_Fenumus_Rune_of_Agony { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Fenumus_Rune_of_Agony { get; set; } = new ToggleNode(true);
 
     [Menu("1x Saqawal's Rune of the Sky")]
-    public ToggleNode Reward__1x_Saqawal_s_Rune_of_the_Sky { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Saqawal_s_Rune_of_the_Sky { get; set; } = new ToggleNode(true);
 
     [Menu("1x The Greatwolf's Rune of Willpower")]
-    public ToggleNode Reward__1x_The_Greatwolf_s_Rune_of_Willpower { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_The_Greatwolf_s_Rune_of_Willpower { get; set; } = new ToggleNode(true);
 
     [Menu("1x The Greatwolf's Rune of Claws")]
-    public ToggleNode Reward__1x_The_Greatwolf_s_Rune_of_Claws { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_The_Greatwolf_s_Rune_of_Claws { get; set; } = new ToggleNode(true);
 
     [Menu("1x Thane Leld's Rune of Spring")]
-    public ToggleNode Reward__1x_Thane_Leld_s_Rune_of_Spring { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Thane_Leld_s_Rune_of_Spring { get; set; } = new ToggleNode(true);
 
     [Menu("1x Lady Hestra's Rune of Winter")]
-    public ToggleNode Reward__1x_Lady_Hestra_s_Rune_of_Winter { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Lady_Hestra_s_Rune_of_Winter { get; set; } = new ToggleNode(true);
 
     [Menu("1x Thane Myrk's Rune of Summer")]
-    public ToggleNode Reward__1x_Thane_Myrk_s_Rune_of_Summer { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Thane_Myrk_s_Rune_of_Summer { get; set; } = new ToggleNode(true);
 
     [Menu("1x Fenumus' Rune of Draining")]
-    public ToggleNode Reward__1x_Fenumus_Rune_of_Draining { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Fenumus_Rune_of_Draining { get; set; } = new ToggleNode(true);
 
     [Menu("1x Fenumus' Rune of Spinning")]
-    public ToggleNode Reward__1x_Fenumus_Rune_of_Spinning { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Fenumus_Rune_of_Spinning { get; set; } = new ToggleNode(true);
 
     [Menu("1x Craiceann's Rune of Recovery")]
-    public ToggleNode Reward__1x_Craiceann_s_Rune_of_Recovery { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Craiceann_s_Rune_of_Recovery { get; set; } = new ToggleNode(true);
 
     [Menu("1x Farrul's Rune of the Hunt")]
-    public ToggleNode Reward__1x_Farrul_s_Rune_of_the_Hunt { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Farrul_s_Rune_of_the_Hunt { get; set; } = new ToggleNode(true);
 
     [Menu("1x Saqawal's Rune of Erosion")]
-    public ToggleNode Reward__1x_Saqawal_s_Rune_of_Erosion { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Saqawal_s_Rune_of_Erosion { get; set; } = new ToggleNode(true);
 
     [Menu("1x Craiceann's Rune of Warding")]
-    public ToggleNode Reward__1x_Craiceann_s_Rune_of_Warding { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Craiceann_s_Rune_of_Warding { get; set; } = new ToggleNode(true);
 
     [Menu("3x Chaos Orb")]
-    public ToggleNode Reward__3x_Chaos_Orb { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__3x_Chaos_Orb { get; set; } = new ToggleNode(true);
 
     [Menu("1x Masterwork Rune")]
-    public ToggleNode Reward__1x_Masterwork_Rune { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Masterwork_Rune { get; set; } = new ToggleNode(true);
 
     [Menu("1x Perfect Jeweller's Orb")]
-    public ToggleNode Reward__1x_Perfect_Jeweller_s_Orb { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Perfect_Jeweller_s_Orb { get; set; } = new ToggleNode(true);
 
     [Menu("Rare Unique Item")]
-    public ToggleNode Reward_Rare_Unique_Item { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward_Rare_Unique_Item { get; set; } = new ToggleNode(true);
 
     [Menu("1x Orb of Chance")]
-    public ToggleNode Reward__1x_Orb_of_Chance { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Orb_of_Chance { get; set; } = new ToggleNode(true);
 
     [Menu("Skill: Verisium Manifestations")]
-    public ToggleNode Reward_Skill_Verisium_Manifestations { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward_Skill_Verisium_Manifestations { get; set; } = new ToggleNode(true);
 
     [Menu("Skill: Powered by Verisium")]
-    public ToggleNode Reward_Skill_Powered_by_Verisium { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward_Skill_Powered_by_Verisium { get; set; } = new ToggleNode(true);
 
     [Menu("Skill: Remnants of Kalguur")]
-    public ToggleNode Reward_Skill_Remnants_of_Kalguur { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward_Skill_Remnants_of_Kalguur { get; set; } = new ToggleNode(true);
 
     [Menu("Skill: Grim Pillars")]
-    public ToggleNode Reward_Skill_Grim_Pillars { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward_Skill_Grim_Pillars { get; set; } = new ToggleNode(true);
 
     [Menu("Skill: Bitter Dead")]
-    public ToggleNode Reward_Skill_Bitter_Dead { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward_Skill_Bitter_Dead { get; set; } = new ToggleNode(true);
 
     [Menu("Skill: Conductive Runes")]
-    public ToggleNode Reward_Skill_Conductive_Runes { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward_Skill_Conductive_Runes { get; set; } = new ToggleNode(true);
 
     [Menu("Skill: Repulsion")]
-    public ToggleNode Reward_Skill_Repulsion { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward_Skill_Repulsion { get; set; } = new ToggleNode(true);
 
     [Menu("Skill: Frostflame Nova")]
-    public ToggleNode Reward_Skill_Frostflame_Nova { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward_Skill_Frostflame_Nova { get; set; } = new ToggleNode(true);
 
     [Menu("Skill: Fragments Of The Past")]
-    public ToggleNode Reward_Skill_Fragments_Of_The_Past { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward_Skill_Fragments_Of_The_Past { get; set; } = new ToggleNode(true);
 
     [Menu("Skill: Eternal March")]
-    public ToggleNode Reward_Skill_Eternal_March { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward_Skill_Eternal_March { get; set; } = new ToggleNode(true);
 
     [Menu("Skill: Detonate Living")]
-    public ToggleNode Reward_Skill_Detonate_Living { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward_Skill_Detonate_Living { get; set; } = new ToggleNode(true);
 
     [Menu("3x Greater Orb of Transmutation")]
-    public ToggleNode Reward__3x_Greater_Orb_of_Transmutation { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__3x_Greater_Orb_of_Transmutation { get; set; } = new ToggleNode(true);
 
     [Menu("3x Greater Orb of Augmentation")]
-    public ToggleNode Reward__3x_Greater_Orb_of_Augmentation { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__3x_Greater_Orb_of_Augmentation { get; set; } = new ToggleNode(true);
 
     [Menu("1x Warding Rune of Hollowing")]
-    public ToggleNode Reward__1x_Warding_Rune_of_Hollowing { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Warding_Rune_of_Hollowing { get; set; } = new ToggleNode(true);
 
     [Menu("1x Warding Rune of Bodyguards")]
-    public ToggleNode Reward__1x_Warding_Rune_of_Bodyguards { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Warding_Rune_of_Bodyguards { get; set; } = new ToggleNode(true);
 
     [Menu("1x Warding Rune of Equinox")]
-    public ToggleNode Reward__1x_Warding_Rune_of_Equinox { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Warding_Rune_of_Equinox { get; set; } = new ToggleNode(true);
 
     [Menu("1x Warding Rune of Obsession")]
-    public ToggleNode Reward__1x_Warding_Rune_of_Obsession { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Warding_Rune_of_Obsession { get; set; } = new ToggleNode(true);
 
     [Menu("1x Warding Rune of Armature")]
-    public ToggleNode Reward__1x_Warding_Rune_of_Armature { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Warding_Rune_of_Armature { get; set; } = new ToggleNode(true);
 
     [Menu("5x Random Currency")]
-    public ToggleNode Reward__5x_Random_Currency { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__5x_Random_Currency { get; set; } = new ToggleNode(true);
 
     [Menu("1x Uncut Skill Gem (Level 19)")]
-    public ToggleNode Reward__1x_Uncut_Skill_Gem_Level_19 { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Uncut_Skill_Gem_Level_19 { get; set; } = new ToggleNode(true);
 
     [Menu("1x Uncut Spirit Gem (Level 19)")]
-    public ToggleNode Reward__1x_Uncut_Spirit_Gem_Level_19 { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Uncut_Spirit_Gem_Level_19 { get; set; } = new ToggleNode(true);
 
     [Menu("1x Divine Orb")]
-    public ToggleNode Reward__1x_Divine_Orb { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Divine_Orb { get; set; } = new ToggleNode(true);
 
     [Menu("1x Greater Chaos Orb")]
-    public ToggleNode Reward__1x_Greater_Chaos_Orb { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Greater_Chaos_Orb { get; set; } = new ToggleNode(true);
 
     [Menu("1x Greater Exalted Orb")]
-    public ToggleNode Reward__1x_Greater_Exalted_Orb { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Greater_Exalted_Orb { get; set; } = new ToggleNode(true);
 
     [Menu("1x Greater Regal Orb")]
-    public ToggleNode Reward__1x_Greater_Regal_Orb { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Greater_Regal_Orb { get; set; } = new ToggleNode(true);
 
     [Menu("Unique Ring")]
-    public ToggleNode Reward_Unique_Ring { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward_Unique_Ring { get; set; } = new ToggleNode(true);
 
     [Menu("Unique Belt")]
-    public ToggleNode Reward_Unique_Belt { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward_Unique_Belt { get; set; } = new ToggleNode(true);
 
     [Menu("Unique Amulet")]
-    public ToggleNode Reward_Unique_Amulet { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward_Unique_Amulet { get; set; } = new ToggleNode(true);
 
     [Menu("1x Rune of Confrontation")]
-    public ToggleNode Reward__1x_Rune_of_Confrontation { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Rune_of_Confrontation { get; set; } = new ToggleNode(true);
 
     [Menu("1x Rune of Vital Flame")]
-    public ToggleNode Reward__1x_Rune_of_Vital_Flame { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Rune_of_Vital_Flame { get; set; } = new ToggleNode(true);
 
     [Menu("1x Rune of Reach")]
-    public ToggleNode Reward__1x_Rune_of_Reach { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Rune_of_Reach { get; set; } = new ToggleNode(true);
 
     [Menu("1x Rune of Consistency")]
-    public ToggleNode Reward__1x_Rune_of_Consistency { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Rune_of_Consistency { get; set; } = new ToggleNode(true);
 
     [Menu("1x Rune of the Blossom")]
-    public ToggleNode Reward__1x_Rune_of_the_Blossom { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Rune_of_the_Blossom { get; set; } = new ToggleNode(true);
 
     [Menu("1x Rune of the Prism")]
-    public ToggleNode Reward__1x_Rune_of_the_Prism { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Rune_of_the_Prism { get; set; } = new ToggleNode(true);
 
     [Menu("1x Rune of Foundations")]
-    public ToggleNode Reward__1x_Rune_of_Foundations { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Rune_of_Foundations { get; set; } = new ToggleNode(true);
 
     [Menu("1x Rune of Accumulation")]
-    public ToggleNode Reward__1x_Rune_of_Accumulation { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Rune_of_Accumulation { get; set; } = new ToggleNode(true);
 
     [Menu("1x Rune of Renown")]
-    public ToggleNode Reward__1x_Rune_of_Renown { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Rune_of_Renown { get; set; } = new ToggleNode(true);
 
     [Menu("1x Rune of Culmination")]
-    public ToggleNode Reward__1x_Rune_of_Culmination { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Rune_of_Culmination { get; set; } = new ToggleNode(true);
 
     [Menu("1x Rune of Acrobatics")]
-    public ToggleNode Reward__1x_Rune_of_Acrobatics { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Rune_of_Acrobatics { get; set; } = new ToggleNode(true);
 
     [Menu("1x Rune of the Hunt")]
-    public ToggleNode Reward__1x_Rune_of_the_Hunt { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Rune_of_the_Hunt { get; set; } = new ToggleNode(true);
 
     [Menu("1x Rune of Vitality")]
-    public ToggleNode Reward__1x_Rune_of_Vitality { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Rune_of_Vitality { get; set; } = new ToggleNode(true);
 
     [Menu("Unique Jewellery")]
-    public ToggleNode Reward_Unique_Jewellery { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward_Unique_Jewellery { get; set; } = new ToggleNode(true);
 
     [Menu("1x Greater Jeweller's Orb")]
-    public ToggleNode Reward__1x_Greater_Jeweller_s_Orb { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Greater_Jeweller_s_Orb { get; set; } = new ToggleNode(true);
 
     [Menu("2x Chaos Orb")]
-    public ToggleNode Reward__2x_Chaos_Orb { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__2x_Chaos_Orb { get; set; } = new ToggleNode(true);
 
     [Menu("3x Orb of Alchemy")]
-    public ToggleNode Reward__3x_Orb_of_Alchemy { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__3x_Orb_of_Alchemy { get; set; } = new ToggleNode(true);
 
     [Menu("1x Warding Rune of Symbiosis")]
-    public ToggleNode Reward__1x_Warding_Rune_of_Symbiosis { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Warding_Rune_of_Symbiosis { get; set; } = new ToggleNode(true);
 
     [Menu("1x Warding Rune of Salvaging")]
-    public ToggleNode Reward__1x_Warding_Rune_of_Salvaging { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Warding_Rune_of_Salvaging { get; set; } = new ToggleNode(true);
 
     [Menu("1x Warding Rune of Annihilation")]
-    public ToggleNode Reward__1x_Warding_Rune_of_Annihilation { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Warding_Rune_of_Annihilation { get; set; } = new ToggleNode(true);
 
     [Menu("1x Warding Rune of Heart")]
-    public ToggleNode Reward__1x_Warding_Rune_of_Heart { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Warding_Rune_of_Heart { get; set; } = new ToggleNode(true);
 
     [Menu("1x Warding Rune of Glancing")]
-    public ToggleNode Reward__1x_Warding_Rune_of_Glancing { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Warding_Rune_of_Glancing { get; set; } = new ToggleNode(true);
 
     [Menu("1x Warding Rune of Stability")]
-    public ToggleNode Reward__1x_Warding_Rune_of_Stability { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Warding_Rune_of_Stability { get; set; } = new ToggleNode(true);
 
     [Menu("3x Gemcutter's Prism")]
-    public ToggleNode Reward__3x_Gemcutter_s_Prism { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__3x_Gemcutter_s_Prism { get; set; } = new ToggleNode(true);
 
     [Menu("3x Glassblower's Bauble")]
-    public ToggleNode Reward__3x_Glassblower_s_Bauble { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__3x_Glassblower_s_Bauble { get; set; } = new ToggleNode(true);
 
     [Menu("3x Exalted Orb")]
-    public ToggleNode Reward__3x_Exalted_Orb { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__3x_Exalted_Orb { get; set; } = new ToggleNode(true);
 
     [Menu("Unique Wand")]
-    public ToggleNode Reward_Unique_Wand { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward_Unique_Wand { get; set; } = new ToggleNode(true);
 
     [Menu("Unique Two Hand Mace")]
-    public ToggleNode Reward_Unique_Two_Hand_Mace { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward_Unique_Two_Hand_Mace { get; set; } = new ToggleNode(true);
 
     [Menu("Unique Talisman")]
-    public ToggleNode Reward_Unique_Talisman { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward_Unique_Talisman { get; set; } = new ToggleNode(true);
 
     [Menu("Unique Staff")]
-    public ToggleNode Reward_Unique_Staff { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward_Unique_Staff { get; set; } = new ToggleNode(true);
 
     [Menu("Unique Spear")]
-    public ToggleNode Reward_Unique_Spear { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward_Unique_Spear { get; set; } = new ToggleNode(true);
 
     [Menu("Unique Shield")]
-    public ToggleNode Reward_Unique_Shield { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward_Unique_Shield { get; set; } = new ToggleNode(true);
 
     [Menu("Unique Sceptre")]
-    public ToggleNode Reward_Unique_Sceptre { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward_Unique_Sceptre { get; set; } = new ToggleNode(true);
 
     [Menu("Unique Quiver")]
-    public ToggleNode Reward_Unique_Quiver { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward_Unique_Quiver { get; set; } = new ToggleNode(true);
 
     [Menu("Unique Quarterstaff")]
-    public ToggleNode Reward_Unique_Quarterstaff { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward_Unique_Quarterstaff { get; set; } = new ToggleNode(true);
 
     [Menu("Unique One Hand Mace")]
-    public ToggleNode Reward_Unique_One_Hand_Mace { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward_Unique_One_Hand_Mace { get; set; } = new ToggleNode(true);
 
     [Menu("Unique Focus")]
-    public ToggleNode Reward_Unique_Focus { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward_Unique_Focus { get; set; } = new ToggleNode(true);
 
     [Menu("Unique Crossbow")]
-    public ToggleNode Reward_Unique_Crossbow { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward_Unique_Crossbow { get; set; } = new ToggleNode(true);
 
     [Menu("Unique Bow")]
-    public ToggleNode Reward_Unique_Bow { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward_Unique_Bow { get; set; } = new ToggleNode(true);
 
     [Menu("Support: Healing Runes")]
-    public ToggleNode Reward_Support_Healing_Runes { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward_Support_Healing_Runes { get; set; } = new ToggleNode(true);
 
     [Menu("1x Thaumaturgic Flux (Level 18)")]
-    public ToggleNode Reward__1x_Thaumaturgic_Flux_Level_18 { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Thaumaturgic_Flux_Level_18 { get; set; } = new ToggleNode(true);
 
     [Menu("1x Thaumaturgic Flux (Level 17)")]
-    public ToggleNode Reward__1x_Thaumaturgic_Flux_Level_17 { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Thaumaturgic_Flux_Level_17 { get; set; } = new ToggleNode(true);
 
     [Menu("1x Thaumaturgic Flux (Level 16)")]
-    public ToggleNode Reward__1x_Thaumaturgic_Flux_Level_16 { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Thaumaturgic_Flux_Level_16 { get; set; } = new ToggleNode(true);
 
     [Menu("1x Thaumaturgic Flux (Level 15)")]
-    public ToggleNode Reward__1x_Thaumaturgic_Flux_Level_15 { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Thaumaturgic_Flux_Level_15 { get; set; } = new ToggleNode(true);
 
     [Menu("1x Thaumaturgic Flux (Level 14)")]
-    public ToggleNode Reward__1x_Thaumaturgic_Flux_Level_14 { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Thaumaturgic_Flux_Level_14 { get; set; } = new ToggleNode(true);
 
     [Menu("1x Thaumaturgic Flux (Level 13)")]
-    public ToggleNode Reward__1x_Thaumaturgic_Flux_Level_13 { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Thaumaturgic_Flux_Level_13 { get; set; } = new ToggleNode(true);
 
     [Menu("1x Thaumaturgic Flux (Level 12)")]
-    public ToggleNode Reward__1x_Thaumaturgic_Flux_Level_12 { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Thaumaturgic_Flux_Level_12 { get; set; } = new ToggleNode(true);
 
     [Menu("1x Thaumaturgic Flux (Level 11)")]
-    public ToggleNode Reward__1x_Thaumaturgic_Flux_Level_11 { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Thaumaturgic_Flux_Level_11 { get; set; } = new ToggleNode(true);
 
     [Menu("1x Thaumaturgic Flux (Level 10)")]
-    public ToggleNode Reward__1x_Thaumaturgic_Flux_Level_10 { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Thaumaturgic_Flux_Level_10 { get; set; } = new ToggleNode(true);
 
     [Menu("1x Thaumaturgic Flux (Level 9)")]
-    public ToggleNode Reward__1x_Thaumaturgic_Flux_Level_9 { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Thaumaturgic_Flux_Level_9 { get; set; } = new ToggleNode(true);
 
     [Menu("1x Thaumaturgic Flux (Level 8)")]
-    public ToggleNode Reward__1x_Thaumaturgic_Flux_Level_8 { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Thaumaturgic_Flux_Level_8 { get; set; } = new ToggleNode(true);
 
     [Menu("1x Thaumaturgic Flux (Level 7)")]
-    public ToggleNode Reward__1x_Thaumaturgic_Flux_Level_7 { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Thaumaturgic_Flux_Level_7 { get; set; } = new ToggleNode(true);
 
     [Menu("1x Thaumaturgic Flux (Level 6)")]
-    public ToggleNode Reward__1x_Thaumaturgic_Flux_Level_6 { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Thaumaturgic_Flux_Level_6 { get; set; } = new ToggleNode(true);
 
     [Menu("1x Thaumaturgic Flux (Level 5)")]
-    public ToggleNode Reward__1x_Thaumaturgic_Flux_Level_5 { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Thaumaturgic_Flux_Level_5 { get; set; } = new ToggleNode(true);
 
     [Menu("1x Orb of Alchemy")]
-    public ToggleNode Reward__1x_Orb_of_Alchemy { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Orb_of_Alchemy { get; set; } = new ToggleNode(true);
 
     [Menu("1x Warding Rune of Courage")]
-    public ToggleNode Reward__1x_Warding_Rune_of_Courage { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Warding_Rune_of_Courage { get; set; } = new ToggleNode(true);
 
     [Menu("1x Warding Rune of Desperation")]
-    public ToggleNode Reward__1x_Warding_Rune_of_Desperation { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Warding_Rune_of_Desperation { get; set; } = new ToggleNode(true);
 
     [Menu("1x Warding Rune of Disintegration")]
-    public ToggleNode Reward__1x_Warding_Rune_of_Disintegration { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Warding_Rune_of_Disintegration { get; set; } = new ToggleNode(true);
 
     [Menu("1x Warding Rune of Protection")]
-    public ToggleNode Reward__1x_Warding_Rune_of_Protection { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Warding_Rune_of_Protection { get; set; } = new ToggleNode(true);
 
     [Menu("1x Warding Rune of Reinforcement")]
-    public ToggleNode Reward__1x_Warding_Rune_of_Reinforcement { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Warding_Rune_of_Reinforcement { get; set; } = new ToggleNode(true);
 
     [Menu("2x Gemcutter's Prism")]
-    public ToggleNode Reward__2x_Gemcutter_s_Prism { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__2x_Gemcutter_s_Prism { get; set; } = new ToggleNode(true);
 
     [Menu("Support: Runic Infusion")]
-    public ToggleNode Reward_Support_Runic_Infusion { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward_Support_Runic_Infusion { get; set; } = new ToggleNode(true);
 
     [Menu("Support: Runic Extraction")]
-    public ToggleNode Reward_Support_Runic_Extraction { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward_Support_Runic_Extraction { get; set; } = new ToggleNode(true);
 
     [Menu("Support: Fist Of Kalguur")]
-    public ToggleNode Reward_Support_Fist_Of_Kalguur { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward_Support_Fist_Of_Kalguur { get; set; } = new ToggleNode(true);
 
     [Menu("Support: Scouring Flame")]
-    public ToggleNode Reward_Support_Scouring_Flame { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward_Support_Scouring_Flame { get; set; } = new ToggleNode(true);
 
     [Menu("Support: Runeforged Blades")]
-    public ToggleNode Reward_Support_Runeforged_Blades { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward_Support_Runeforged_Blades { get; set; } = new ToggleNode(true);
 
     [Menu("Support: Concussive Runes")]
-    public ToggleNode Reward_Support_Concussive_Runes { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward_Support_Concussive_Runes { get; set; } = new ToggleNode(true);
 
     [Menu("1x Greater Orb of Transmutation")]
-    public ToggleNode Reward__1x_Greater_Orb_of_Transmutation { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Greater_Orb_of_Transmutation { get; set; } = new ToggleNode(true);
 
     [Menu("2x Glassblower's Bauble")]
-    public ToggleNode Reward__2x_Glassblower_s_Bauble { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__2x_Glassblower_s_Bauble { get; set; } = new ToggleNode(true);
 
     [Menu("1x Greater Orb of Augmentation")]
-    public ToggleNode Reward__1x_Greater_Orb_of_Augmentation { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Greater_Orb_of_Augmentation { get; set; } = new ToggleNode(true);
 
     [Menu("6x Blacksmith's Whetstone")]
-    public ToggleNode Reward__6x_Blacksmith_s_Whetstone { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__6x_Blacksmith_s_Whetstone { get; set; } = new ToggleNode(true);
 
     [Menu("6x Arcanist's Etcher")]
-    public ToggleNode Reward__6x_Arcanist_s_Etcher { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__6x_Arcanist_s_Etcher { get; set; } = new ToggleNode(true);
 
     [Menu("6x Armourer's Scrap")]
-    public ToggleNode Reward__6x_Armourer_s_Scrap { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__6x_Armourer_s_Scrap { get; set; } = new ToggleNode(true);
 
     [Menu("1x Lesser Jeweller's Orb")]
-    public ToggleNode Reward__1x_Lesser_Jeweller_s_Orb { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Lesser_Jeweller_s_Orb { get; set; } = new ToggleNode(true);
 
     [Menu("3x Regal Orb")]
-    public ToggleNode Reward__3x_Regal_Orb { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__3x_Regal_Orb { get; set; } = new ToggleNode(true);
 
     [Menu("1x Chaos Orb")]
-    public ToggleNode Reward__1x_Chaos_Orb { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Chaos_Orb { get; set; } = new ToggleNode(true);
 
     [Menu("2x Exalted Orb")]
-    public ToggleNode Reward__2x_Exalted_Orb { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__2x_Exalted_Orb { get; set; } = new ToggleNode(true);
 
     [Menu("3x Artificer's Orb")]
-    public ToggleNode Reward__3x_Artificer_s_Orb { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__3x_Artificer_s_Orb { get; set; } = new ToggleNode(true);
 
     [Menu("Unique Helmet")]
-    public ToggleNode Reward_Unique_Helmet { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward_Unique_Helmet { get; set; } = new ToggleNode(true);
 
     [Menu("Unique Gloves")]
-    public ToggleNode Reward_Unique_Gloves { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward_Unique_Gloves { get; set; } = new ToggleNode(true);
 
     [Menu("Unique Boots")]
-    public ToggleNode Reward_Unique_Boots { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward_Unique_Boots { get; set; } = new ToggleNode(true);
 
     [Menu("Unique Body Armour")]
-    public ToggleNode Reward_Unique_Body_Armour { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward_Unique_Body_Armour { get; set; } = new ToggleNode(true);
 
     [Menu("1x Greater Charging Rune")]
-    public ToggleNode Reward__1x_Greater_Charging_Rune { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Greater_Charging_Rune { get; set; } = new ToggleNode(true);
 
     [Menu("1x Greater Ward Rune")]
-    public ToggleNode Reward__1x_Greater_Ward_Rune { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Greater_Ward_Rune { get; set; } = new ToggleNode(true);
 
     [Menu("1x Greater Stone Rune")]
-    public ToggleNode Reward__1x_Greater_Stone_Rune { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Greater_Stone_Rune { get; set; } = new ToggleNode(true);
 
     [Menu("1x Greater Robust Rune")]
-    public ToggleNode Reward__1x_Greater_Robust_Rune { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Greater_Robust_Rune { get; set; } = new ToggleNode(true);
 
     [Menu("1x Greater Inspiration Rune")]
-    public ToggleNode Reward__1x_Greater_Inspiration_Rune { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Greater_Inspiration_Rune { get; set; } = new ToggleNode(true);
 
     [Menu("1x Greater Mind Rune")]
-    public ToggleNode Reward__1x_Greater_Mind_Rune { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Greater_Mind_Rune { get; set; } = new ToggleNode(true);
 
     [Menu("1x Greater Storm Rune")]
-    public ToggleNode Reward__1x_Greater_Storm_Rune { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Greater_Storm_Rune { get; set; } = new ToggleNode(true);
 
     [Menu("1x Greater Rebirth Rune")]
-    public ToggleNode Reward__1x_Greater_Rebirth_Rune { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Greater_Rebirth_Rune { get; set; } = new ToggleNode(true);
 
     [Menu("1x Greater Body Rune")]
-    public ToggleNode Reward__1x_Greater_Body_Rune { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Greater_Body_Rune { get; set; } = new ToggleNode(true);
 
     [Menu("1x Greater Resolve Rune")]
-    public ToggleNode Reward__1x_Greater_Resolve_Rune { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Greater_Resolve_Rune { get; set; } = new ToggleNode(true);
 
     [Menu("1x Greater Desert Rune")]
-    public ToggleNode Reward__1x_Greater_Desert_Rune { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Greater_Desert_Rune { get; set; } = new ToggleNode(true);
 
     [Menu("1x Greater Iron Rune")]
-    public ToggleNode Reward__1x_Greater_Iron_Rune { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Greater_Iron_Rune { get; set; } = new ToggleNode(true);
 
     [Menu("1x Greater Adept Rune")]
-    public ToggleNode Reward__1x_Greater_Adept_Rune { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Greater_Adept_Rune { get; set; } = new ToggleNode(true);
 
     [Menu("1x Greater Glacial Rune")]
-    public ToggleNode Reward__1x_Greater_Glacial_Rune { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Greater_Glacial_Rune { get; set; } = new ToggleNode(true);
 
     [Menu("1x Greater Vision Rune")]
-    public ToggleNode Reward__1x_Greater_Vision_Rune { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Greater_Vision_Rune { get; set; } = new ToggleNode(true);
 
     [Menu("1x Charging Rune")]
-    public ToggleNode Reward__1x_Charging_Rune { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Charging_Rune { get; set; } = new ToggleNode(true);
 
     [Menu("4x Blacksmith's Whetstone")]
-    public ToggleNode Reward__4x_Blacksmith_s_Whetstone { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__4x_Blacksmith_s_Whetstone { get; set; } = new ToggleNode(true);
 
     [Menu("4x Arcanist's Etcher")]
-    public ToggleNode Reward__4x_Arcanist_s_Etcher { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__4x_Arcanist_s_Etcher { get; set; } = new ToggleNode(true);
 
     [Menu("4x Armourer's Scrap")]
-    public ToggleNode Reward__4x_Armourer_s_Scrap { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__4x_Armourer_s_Scrap { get; set; } = new ToggleNode(true);
 
     [Menu("2x Regal Orb")]
-    public ToggleNode Reward__2x_Regal_Orb { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__2x_Regal_Orb { get; set; } = new ToggleNode(true);
 
     [Menu("1x Gemcutter's Prism")]
-    public ToggleNode Reward__1x_Gemcutter_s_Prism { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Gemcutter_s_Prism { get; set; } = new ToggleNode(true);
 
     [Menu("1x Glassblower's Bauble")]
-    public ToggleNode Reward__1x_Glassblower_s_Bauble { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Glassblower_s_Bauble { get; set; } = new ToggleNode(true);
 
     [Menu("Uncut Spirit Gem")]
-    public ToggleNode Reward_Uncut_Spirit_Gem { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward_Uncut_Spirit_Gem { get; set; } = new ToggleNode(true);
 
     [Menu("2x Orb of Transmutation")]
-    public ToggleNode Reward__2x_Orb_of_Transmutation { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__2x_Orb_of_Transmutation { get; set; } = new ToggleNode(true);
 
     [Menu("2x Orb of Augmentation")]
-    public ToggleNode Reward__2x_Orb_of_Augmentation { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__2x_Orb_of_Augmentation { get; set; } = new ToggleNode(true);
 
     [Menu("2x Artificer's Orb")]
-    public ToggleNode Reward__2x_Artificer_s_Orb { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__2x_Artificer_s_Orb { get; set; } = new ToggleNode(true);
 
     [Menu("1x Ward Rune")]
-    public ToggleNode Reward__1x_Ward_Rune { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Ward_Rune { get; set; } = new ToggleNode(true);
 
     [Menu("1x Stone Rune")]
-    public ToggleNode Reward__1x_Stone_Rune { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Stone_Rune { get; set; } = new ToggleNode(true);
 
     [Menu("1x Robust Rune")]
-    public ToggleNode Reward__1x_Robust_Rune { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Robust_Rune { get; set; } = new ToggleNode(true);
 
     [Menu("1x Inspiration Rune")]
-    public ToggleNode Reward__1x_Inspiration_Rune { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Inspiration_Rune { get; set; } = new ToggleNode(true);
 
     [Menu("1x Mind Rune")]
-    public ToggleNode Reward__1x_Mind_Rune { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Mind_Rune { get; set; } = new ToggleNode(true);
 
     [Menu("1x Storm Rune")]
-    public ToggleNode Reward__1x_Storm_Rune { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Storm_Rune { get; set; } = new ToggleNode(true);
 
     [Menu("1x Rebirth Rune")]
-    public ToggleNode Reward__1x_Rebirth_Rune { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Rebirth_Rune { get; set; } = new ToggleNode(true);
 
     [Menu("1x Body Rune")]
-    public ToggleNode Reward__1x_Body_Rune { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Body_Rune { get; set; } = new ToggleNode(true);
 
     [Menu("1x Resolve Rune")]
-    public ToggleNode Reward__1x_Resolve_Rune { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Resolve_Rune { get; set; } = new ToggleNode(true);
 
     [Menu("1x Desert Rune")]
-    public ToggleNode Reward__1x_Desert_Rune { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Desert_Rune { get; set; } = new ToggleNode(true);
 
     [Menu("1x Iron Rune")]
-    public ToggleNode Reward__1x_Iron_Rune { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Iron_Rune { get; set; } = new ToggleNode(true);
 
     [Menu("1x Adept Rune")]
-    public ToggleNode Reward__1x_Adept_Rune { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Adept_Rune { get; set; } = new ToggleNode(true);
 
     [Menu("1x Glacial Rune")]
-    public ToggleNode Reward__1x_Glacial_Rune { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Glacial_Rune { get; set; } = new ToggleNode(true);
 
     [Menu("1x Vision Rune")]
-    public ToggleNode Reward__1x_Vision_Rune { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Vision_Rune { get; set; } = new ToggleNode(true);
 
     [Menu("1x Lesser Charging Rune")]
-    public ToggleNode Reward__1x_Lesser_Charging_Rune { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Lesser_Charging_Rune { get; set; } = new ToggleNode(true);
 
     [Menu("1x Lesser Ward Rune")]
-    public ToggleNode Reward__1x_Lesser_Ward_Rune { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Lesser_Ward_Rune { get; set; } = new ToggleNode(true);
 
     [Menu("1x Lesser Mind Rune")]
-    public ToggleNode Reward__1x_Lesser_Mind_Rune { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Lesser_Mind_Rune { get; set; } = new ToggleNode(true);
 
     [Menu("1x Lesser Body Rune")]
-    public ToggleNode Reward__1x_Lesser_Body_Rune { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Lesser_Body_Rune { get; set; } = new ToggleNode(true);
 
     [Menu("1x Lesser Stone Rune")]
-    public ToggleNode Reward__1x_Lesser_Stone_Rune { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Lesser_Stone_Rune { get; set; } = new ToggleNode(true);
 
     [Menu("1x Lesser Robust Rune")]
-    public ToggleNode Reward__1x_Lesser_Robust_Rune { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Lesser_Robust_Rune { get; set; } = new ToggleNode(true);
 
     [Menu("1x Lesser Inspiration Rune")]
-    public ToggleNode Reward__1x_Lesser_Inspiration_Rune { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Lesser_Inspiration_Rune { get; set; } = new ToggleNode(true);
 
     [Menu("1x Lesser Storm Rune")]
-    public ToggleNode Reward__1x_Lesser_Storm_Rune { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Lesser_Storm_Rune { get; set; } = new ToggleNode(true);
 
     [Menu("1x Lesser Rebirth Rune")]
-    public ToggleNode Reward__1x_Lesser_Rebirth_Rune { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Lesser_Rebirth_Rune { get; set; } = new ToggleNode(true);
 
     [Menu("1x Lesser Resolve Rune")]
-    public ToggleNode Reward__1x_Lesser_Resolve_Rune { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Lesser_Resolve_Rune { get; set; } = new ToggleNode(true);
 
     [Menu("1x Lesser Desert Rune")]
-    public ToggleNode Reward__1x_Lesser_Desert_Rune { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Lesser_Desert_Rune { get; set; } = new ToggleNode(true);
 
     [Menu("1x Lesser Iron Rune")]
-    public ToggleNode Reward__1x_Lesser_Iron_Rune { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Lesser_Iron_Rune { get; set; } = new ToggleNode(true);
 
     [Menu("1x Lesser Adept Rune")]
-    public ToggleNode Reward__1x_Lesser_Adept_Rune { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Lesser_Adept_Rune { get; set; } = new ToggleNode(true);
 
     [Menu("1x Lesser Glacial Rune")]
-    public ToggleNode Reward__1x_Lesser_Glacial_Rune { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Lesser_Glacial_Rune { get; set; } = new ToggleNode(true);
 
     [Menu("1x Lesser Vision Rune")]
-    public ToggleNode Reward__1x_Lesser_Vision_Rune { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Lesser_Vision_Rune { get; set; } = new ToggleNode(true);
 
     [Menu("2x Blacksmith's Whetstone")]
-    public ToggleNode Reward__2x_Blacksmith_s_Whetstone { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__2x_Blacksmith_s_Whetstone { get; set; } = new ToggleNode(true);
 
     [Menu("1x Regal Orb")]
-    public ToggleNode Reward__1x_Regal_Orb { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Regal_Orb { get; set; } = new ToggleNode(true);
 
     [Menu("2x Arcanist's Etcher")]
-    public ToggleNode Reward__2x_Arcanist_s_Etcher { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__2x_Arcanist_s_Etcher { get; set; } = new ToggleNode(true);
 
     [Menu("2x Armourer's Scrap")]
-    public ToggleNode Reward__2x_Armourer_s_Scrap { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__2x_Armourer_s_Scrap { get; set; } = new ToggleNode(true);
 
     [Menu("1x Exalted Orb")]
-    public ToggleNode Reward__1x_Exalted_Orb { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Exalted_Orb { get; set; } = new ToggleNode(true);
 
     [Menu("1x Artificer's Orb")]
-    public ToggleNode Reward__1x_Artificer_s_Orb { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Artificer_s_Orb { get; set; } = new ToggleNode(true);
 
     [Menu("Uncut Support Gem")]
-    public ToggleNode Reward_Uncut_Support_Gem { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward_Uncut_Support_Gem { get; set; } = new ToggleNode(true);
 
     [Menu("Uncut Skill Gem")]
-    public ToggleNode Reward_Uncut_Skill_Gem { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward_Uncut_Skill_Gem { get; set; } = new ToggleNode(true);
 
     [Menu("1x Orb of Transmutation")]
-    public ToggleNode Reward__1x_Orb_of_Transmutation { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Orb_of_Transmutation { get; set; } = new ToggleNode(true);
 
     [Menu("1x Orb of Augmentation")]
-    public ToggleNode Reward__1x_Orb_of_Augmentation { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Orb_of_Augmentation { get; set; } = new ToggleNode(true);
 
     [Menu("1x The Runefather's Alloy")]
-    public ToggleNode Reward__1x_The_Runefather_s_Alloy { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_The_Runefather_s_Alloy { get; set; } = new ToggleNode(true);
 
     [Menu("1x The Runebinder's Alloy")]
-    public ToggleNode Reward__1x_The_Runebinder_s_Alloy { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_The_Runebinder_s_Alloy { get; set; } = new ToggleNode(true);
 
     [Menu("1x Transcendent Alloy")]
-    public ToggleNode Reward__1x_Transcendent_Alloy { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Transcendent_Alloy { get; set; } = new ToggleNode(true);
 
     [Menu("1x Celestial Alloy")]
-    public ToggleNode Reward__1x_Celestial_Alloy { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Celestial_Alloy { get; set; } = new ToggleNode(true);
 
     [Menu("1x Sovereign Alloy")]
-    public ToggleNode Reward__1x_Sovereign_Alloy { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Sovereign_Alloy { get; set; } = new ToggleNode(true);
 
     [Menu("1x Thane Girt's Rune of Wildness")]
-    public ToggleNode Reward__1x_Thane_Girt_s_Rune_of_Wildness { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Thane_Girt_s_Rune_of_Wildness { get; set; } = new ToggleNode(true);
 
     [Menu("1x Mystic Alloy")]
-    public ToggleNode Reward__1x_Mystic_Alloy { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Mystic_Alloy { get; set; } = new ToggleNode(true);
 
     [Menu("1x Prismatic Alloy")]
-    public ToggleNode Reward__1x_Prismatic_Alloy { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Prismatic_Alloy { get; set; } = new ToggleNode(true);
 
     [Menu("1x Expansive Alloy")]
-    public ToggleNode Reward__1x_Expansive_Alloy { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Expansive_Alloy { get; set; } = new ToggleNode(true);
 
     [Menu("1x Cyclonic Alloy")]
-    public ToggleNode Reward__1x_Cyclonic_Alloy { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Cyclonic_Alloy { get; set; } = new ToggleNode(true);
 
     [Menu("1x Protective Alloy")]
-    public ToggleNode Reward__1x_Protective_Alloy { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Protective_Alloy { get; set; } = new ToggleNode(true);
 
     [Menu("1x Adaptive Alloy")]
-    public ToggleNode Reward__1x_Adaptive_Alloy { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Adaptive_Alloy { get; set; } = new ToggleNode(true);
 
     [Menu("2x Runic Alloy")]
-    public ToggleNode Reward__2x_Runic_Alloy { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__2x_Runic_Alloy { get; set; } = new ToggleNode(true);
 
     [Menu("1x Runic Alloy")]
-    public ToggleNode Reward__1x_Runic_Alloy { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward__1x_Runic_Alloy { get; set; } = new ToggleNode(true);
 
     [Menu("1x Ancient Rune of Witchcraft")]
-    public ToggleNode Reward_Ancient_Rune_of_Witchcraft { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward_Ancient_Rune_of_Witchcraft { get; set; } = new ToggleNode(true);
 
     [Menu("1x Ancient Rune of Decay")]
-    public ToggleNode Reward_Ancient_Rune_of_Decay { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward_Ancient_Rune_of_Decay { get; set; } = new ToggleNode(true);
 
     [Menu("1x Ancient Rune of Discovery")]
-    public ToggleNode Reward_Ancient_Rune_of_Discovery { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward_Ancient_Rune_of_Discovery { get; set; } = new ToggleNode(true);
 
     [Menu("1x Ancient Rune of Control")]
-    public ToggleNode Reward_Ancient_Rune_of_Control { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward_Ancient_Rune_of_Control { get; set; } = new ToggleNode(true);
 
     [Menu("1x Ancient Rune of Prowess")]
-    public ToggleNode Reward_Ancient_Rune_of_Prowess { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward_Ancient_Rune_of_Prowess { get; set; } = new ToggleNode(true);
 
     [Menu("1x Ancient Rune of Shattering")]
-    public ToggleNode Reward_Ancient_Rune_of_Shattering { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward_Ancient_Rune_of_Shattering { get; set; } = new ToggleNode(true);
 
     [Menu("1x Ancient Rune of the Titan")]
-    public ToggleNode Reward_Ancient_Rune_of_the_Titan { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward_Ancient_Rune_of_the_Titan { get; set; } = new ToggleNode(true);
 
     [Menu("1x Ancient Rune of Dueling")]
-    public ToggleNode Reward_Ancient_Rune_of_Dueling { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward_Ancient_Rune_of_Dueling { get; set; } = new ToggleNode(true);
 
     [Menu("1x Ancient Rune of Retaliation")]
-    public ToggleNode Reward_Ancient_Rune_of_Retaliation { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward_Ancient_Rune_of_Retaliation { get; set; } = new ToggleNode(true);
 
     [Menu("1x Ancient Rune of Detonation")]
-    public ToggleNode Reward_Ancient_Rune_of_Detonation { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward_Ancient_Rune_of_Detonation { get; set; } = new ToggleNode(true);
 
     [Menu("1x Ancient Rune of Animosity")]
-    public ToggleNode Reward_Ancient_Rune_of_Animosity { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward_Ancient_Rune_of_Animosity { get; set; } = new ToggleNode(true);
 
     [Menu("1x Ancient Rune of the Horde")]
-    public ToggleNode Reward_Ancient_Rune_of_the_Horde { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward_Ancient_Rune_of_the_Horde { get; set; } = new ToggleNode(true);
 
     [Menu("1x Ancient Rune of Splinters")]
-    public ToggleNode Reward_Ancient_Rune_of_Splinters { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward_Ancient_Rune_of_Splinters { get; set; } = new ToggleNode(true);
 
     [Menu("1x Uncut Skill Gem (Level 3)")]
-    public ToggleNode Reward_Uncut_Skill_Gem_Level_3 { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward_Uncut_Skill_Gem_Level_3 { get; set; } = new ToggleNode(true);
 
     [Menu("1x Uncut Support Gem (Level 1)")]
-    public ToggleNode Reward_Uncut_Support_Gem_Level_1 { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward_Uncut_Support_Gem_Level_1 { get; set; } = new ToggleNode(true);
 
     [Menu("1x Uncut Skill Gem (Level 5)")]
-    public ToggleNode Reward_Uncut_Skill_Gem_Level_5 { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward_Uncut_Skill_Gem_Level_5 { get; set; } = new ToggleNode(true);
 
     [Menu("1x Uncut Spirit Gem (Level 5)")]
-    public ToggleNode Reward_Uncut_Spirit_Gem_Level_5 { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward_Uncut_Spirit_Gem_Level_5 { get; set; } = new ToggleNode(true);
 
     [Menu("1x Uncut Support Gem (Level 2)")]
-    public ToggleNode Reward_Uncut_Support_Gem_Level_2 { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward_Uncut_Support_Gem_Level_2 { get; set; } = new ToggleNode(true);
 
     [Menu("1x Uncut Spirit Gem (Level 10)")]
-    public ToggleNode Reward_Uncut_Spirit_Gem_Level_10 { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward_Uncut_Spirit_Gem_Level_10 { get; set; } = new ToggleNode(true);
 
     [Menu("1x Uncut Support Gem (Level 3)")]
-    public ToggleNode Reward_Uncut_Support_Gem_Level_3 { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward_Uncut_Support_Gem_Level_3 { get; set; } = new ToggleNode(true);
 
     [Menu("1x Uncut Skill Gem (Level 9)")]
-    public ToggleNode Reward_Uncut_Skill_Gem_Level_9 { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward_Uncut_Skill_Gem_Level_9 { get; set; } = new ToggleNode(true);
 
     [Menu("1x Medved's Crest of the Circle")]
-    public ToggleNode Reward_Medved_s_Crest_of_the_Circle { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward_Medved_s_Crest_of_the_Circle { get; set; } = new ToggleNode(true);
 
     [Menu("1x Uncut Spirit Gem (Level 11)")]
-    public ToggleNode Reward_Uncut_Spirit_Gem_Level_11 { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward_Uncut_Spirit_Gem_Level_11 { get; set; } = new ToggleNode(true);
 
     [Menu("1x Uncut Skill Gem (Level 11)")]
-    public ToggleNode Reward_Uncut_Skill_Gem_Level_11 { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward_Uncut_Skill_Gem_Level_11 { get; set; } = new ToggleNode(true);
 
     [Menu("1x Uncut Support Gem (Level 4)")]
-    public ToggleNode Reward_Uncut_Support_Gem_Level_4 { get; set; } = new ToggleNode(false);
+    public ToggleNode Reward_Uncut_Support_Gem_Level_4 { get; set; } = new ToggleNode(true);
 
 }
