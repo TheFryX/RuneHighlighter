@@ -419,8 +419,7 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
         DrawIntSlider(Settings.ExpeditionModeTooltipFallbackX, "Tooltip Fallback X");
         DrawIntSlider(Settings.ExpeditionModeTooltipFallbackY, "Tooltip Fallback Y");
         DrawIntSlider(Settings.ExpeditionModeTooltipBackgroundOpacity, "Tooltip Fallback Background Opacity");
-        ImGui.Text("Expedition Header Color");
-        DrawColor(Settings.ExpeditionModeHeaderColor, "");
+        DrawColor(Settings.ExpeditionModeHeaderColor, "Expedition Header Color");
 
         ImGui.TextDisabled("Window lists all encounters. Tooltip fallback controls position the on-screen list and BEST PICK line.");
         ImGui.Text($"Detected encounters: {cachedExpeditionModeEntries.Count}");
@@ -960,7 +959,8 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
         var fallbackX = Settings.ExpeditionModeTooltipFallbackX.Value;
         var fallbackUsed = false;
 
-        foreach (var entry in cachedExpeditionModeEntries)
+        foreach (var entry in cachedExpeditionModeEntries
+                     .OrderBy(x => x.Index))
         {
             var rewards = entry.Rewards
                 .OrderByDescending(x => x.Value)
@@ -981,7 +981,7 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
                 entry.ScreenPosition.Y);
 
             var useFallback =
-                Settings.ExpeditionModeTooltipFallbackList.Value &&
+                Settings.ExpeditionModeTooltipFallbackList.Value ||
                 (pos.X <= 1 || pos.Y <= 1 || pos.X > 10000 || pos.Y > 10000);
 
             if (useFallback)
