@@ -46,8 +46,9 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
     private readonly Dictionary<string, PropertyInfo> rewardProperties = new();
     private readonly HashSet<string> enabledItemNames = new(StringComparer.OrdinalIgnoreCase);
     private readonly List<VisibleReward> visibleRewards = new();
-    private readonly Dictionary<string, VisibleReward> stableVisibleRewardCache = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, (VisibleReward Reward, DateTime LastSeenUtc)> stableVisibleRewardCache = new(StringComparer.OrdinalIgnoreCase);
     private int consecutiveEmptyRewardScans;
+    private const int VisibleRewardStickyMs = 350;
 
     private static readonly HttpClient priceHttpClient = new();
 
@@ -61,6 +62,19 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
 
     private readonly List<(Vector2 Position, List<PreOpenPreviewEntry> Entries)> cachedPreOpenPreviewDraws = new();
     private DateTime lastPreOpenPreviewCacheTime = DateTime.MinValue;
+
+    private sealed class ExpeditionModeEncounterEntry
+    {
+        public int Index { get; set; }
+        public Vector2 ScreenPosition { get; set; }
+        public Vector2 GridPosition { get; set; }
+        public int RuneCount { get; set; }
+        public string FixedRune { get; set; } = string.Empty;
+        public List<PreOpenPreviewEntry> Rewards { get; set; } = new();
+    }
+
+    private readonly List<ExpeditionModeEncounterEntry> cachedExpeditionModeEntries = new();
+    private DateTime lastExpeditionModeCacheTime = DateTime.MinValue;
 
     private readonly Dictionary<string, double> priceCache = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, double> rawPriceCache = new(StringComparer.OrdinalIgnoreCase);
@@ -99,14 +113,16 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
 
     private void ApplyVisibleRewardFlickerProtection()
     {
-        // Strong session-sticky cache:
-        // While the reward panel is open, the sticky cache becomes the source of truth for drawing.
-        // If one reward disappears from a single live scan, it still remains visible until the panel closes.
+        // Scroll-aware per-row sticky cache:
+        // - when panel is stable, restore short missed scans to avoid flicker
+        // - when scrolling is detected, do NOT restore cached rows, because they create ghost overlays
+        var now = DateTime.UtcNow;
+
         if (visibleRewards.Count == 0)
         {
             consecutiveEmptyRewardScans++;
 
-            if (consecutiveEmptyRewardScans >= 3)
+            if (consecutiveEmptyRewardScans >= 2)
                 stableVisibleRewardCache.Clear();
 
             return;
@@ -114,30 +130,82 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
 
         consecutiveEmptyRewardScans = 0;
 
-        // Update cache with all currently detected rewards.
+        var isScrolling = IsRewardPanelScrolling();
+
+        if (isScrolling)
+        {
+            // During scroll, old cached rows are invalid immediately.
+            // Keep only current live scan rows.
+            stableVisibleRewardCache.Clear();
+
+            foreach (var reward in visibleRewards)
+            {
+                var key = GetVisibleRewardStableKey(reward);
+                if (!string.IsNullOrWhiteSpace(key))
+                    stableVisibleRewardCache[key] = (reward, now);
+            }
+
+            return;
+        }
+
         foreach (var reward in visibleRewards)
         {
             var key = GetVisibleRewardStableKey(reward);
             if (!string.IsNullOrWhiteSpace(key))
-                stableVisibleRewardCache[key] = reward;
+                stableVisibleRewardCache[key] = (reward, now);
         }
 
-        // Draw from the full session cache, not only from this scan.
-        visibleRewards.Clear();
+        var expired = stableVisibleRewardCache
+            .Where(x => (now - x.Value.LastSeenUtc).TotalMilliseconds > VisibleRewardStickyMs)
+            .Select(x => x.Key)
+            .ToList();
 
-        foreach (var reward in stableVisibleRewardCache.Values
+        foreach (var key in expired)
+            stableVisibleRewardCache.Remove(key);
+
+        foreach (var cached in stableVisibleRewardCache.Values
+                     .Select(x => x.Reward)
                      .OrderBy(x => x.Rect.Y)
                      .ThenBy(x => x.Rect.X))
         {
-            visibleRewards.Add(reward);
+            if (visibleRewards.Any(x =>
+                    string.Equals(x.Text, cached.Text, StringComparison.OrdinalIgnoreCase) &&
+                    Math.Abs(x.Rect.Y - cached.Rect.Y) < 20 &&
+                    Math.Abs(x.Rect.X - cached.Rect.X) < 40))
+                continue;
+
+            visibleRewards.Add(cached);
         }
+    }
+
+    private bool IsRewardPanelScrolling()
+    {
+        // If any currently visible reward with the same text moved a lot since last cache,
+        // the user is scrolling. In that case old cached rows must not be restored.
+        foreach (var reward in visibleRewards)
+        {
+            foreach (var cached in stableVisibleRewardCache.Values)
+            {
+                if (!string.Equals(cached.Reward.Text, reward.Text, StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                if (Math.Abs(cached.Reward.Rect.Y - reward.Rect.Y) > 28)
+                    return true;
+            }
+        }
+
+        return false;
     }
 
     private static string GetVisibleRewardStableKey(VisibleReward reward)
     {
         // Text is intentionally used as the session identity.
         // Some rows, e.g. Warding Rune of Obsession, can disappear from one scan even though the panel is still open.
-        return string.IsNullOrWhiteSpace(reward.Text) ? string.Empty : reward.Text.Trim();
+        if (string.IsNullOrWhiteSpace(reward.Text))
+            return string.Empty;
+
+        var yBucket = (int)Math.Round(reward.Rect.Y / 24f);
+        return reward.Text.Trim() + "|" + yBucket;
     }
 
     public override void Render()
@@ -164,6 +232,10 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
 
             UpdatePreOpenPreviewCache();
             DrawPreOpenPreview();
+
+            UpdateExpeditionModeCache();
+            DrawExpeditionModeWindow();
+            DrawExpeditionModeTooltips();
 
             var rankedRewards = visibleRewards
                 .Where(x => x.TotalValue > 0)
@@ -253,6 +325,11 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
             DrawPreOpenPreviewControls();
         }
 
+        if (ImGui.CollapsingHeader("ExpeditionMode", ImGuiTreeNodeFlags.DefaultOpen))
+        {
+            DrawExpeditionModeControls();
+        }
+
         if (ImGui.CollapsingHeader("Reward Selection"))
         {
             ImGui.Text("Checked rewards will be highlighted. Unchecked rewards will be ignored.");
@@ -326,6 +403,27 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
         DrawIntSlider(Settings.PreviewOffsetX, "Pre-Open Preview Offset X");
         DrawIntSlider(Settings.PreviewOffsetY, "Pre-Open Preview Offset Y");
         DrawIntSlider(Settings.PreviewBackgroundOpacity, "Pre-Open Background Opacity");
+    }
+
+
+    private void DrawExpeditionModeControls()
+    {
+        DrawToggle(Settings.EnableExpeditionMode, "Enable ExpeditionMode Window");
+        DrawToggle(Settings.EnableExpeditionModeTooltip, "Enable ExpeditionMode Tooltip Overlay");
+        DrawToggle(Settings.ExpeditionModeTooltipBestOnly, "Tooltip Best Reward Only");
+        DrawToggle(Settings.ExpeditionModeTooltipTopTwoOnly, "Tooltip Top 2 Only");
+        DrawIntSlider(Settings.ExpeditionModeMaxRewardsPerEncounter, "Max Rewards Per Encounter");
+        DrawIntSlider(Settings.ExpeditionModeMinimumValue, "Minimum Value");
+        DrawToggle(Settings.ExpeditionModeShowZeroPriceRewards, "Show Zero Price / Unknown Rewards");
+        DrawToggle(Settings.ExpeditionModeTooltipFallbackList, "Tooltip Fallback List");
+        DrawIntSlider(Settings.ExpeditionModeTooltipFallbackX, "Tooltip Fallback X");
+        DrawIntSlider(Settings.ExpeditionModeTooltipFallbackY, "Tooltip Fallback Y");
+        DrawIntSlider(Settings.ExpeditionModeTooltipBackgroundOpacity, "Tooltip Fallback Background Opacity");
+        ImGui.Text("Expedition Header Color");
+        DrawColor(Settings.ExpeditionModeHeaderColor, "");
+
+        ImGui.TextDisabled("Window lists all encounters. Tooltip fallback controls position the on-screen list and BEST PICK line.");
+        ImGui.Text($"Detected encounters: {cachedExpeditionModeEntries.Count}");
     }
 
     private void DrawColor(ExileCore2.Shared.Nodes.ColorNode node, string label)
@@ -611,27 +709,42 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
 
         var normalized = NormalizeRewardSelectionName(clean);
 
-        enabledItemNames.Add(clean);
-        enabledItemNames.Add(normalized);
-        enabledItemNames.Add("1x " + normalized);
-
-        if (normalized.Contains("Orb of Transmutation", StringComparison.OrdinalIgnoreCase) ||
-            normalized.Contains("Orb of Augmentation", StringComparison.OrdinalIgnoreCase))
+        void AddAlias(string? value)
         {
-            enabledItemNames.Add(normalized.Replace("Orb of ", "Orb ", StringComparison.OrdinalIgnoreCase));
+            value = CleanupText(value ?? string.Empty);
+            if (!string.IsNullOrWhiteSpace(value))
+                enabledItemNames.Add(value);
         }
+
+        AddAlias(clean);
+        AddAlias(normalized);
+        AddAlias("1x " + normalized);
+        AddAlias(NormalizeRecipeDisplayName(normalized, 1));
 
         if (clean.StartsWith("Skill:", StringComparison.OrdinalIgnoreCase) ||
             clean.StartsWith("Support:", StringComparison.OrdinalIgnoreCase))
         {
-            enabledItemNames.Add(normalized);
-            enabledItemNames.Add("1x " + normalized);
+            AddAlias(normalized);
+            AddAlias("1x " + normalized);
         }
         else
         {
-            // Allow PoE2DB/base names to match in-game gem labels.
-            enabledItemNames.Add("Skill: " + normalized);
-            enabledItemNames.Add("Support: " + normalized);
+            AddAlias("Skill: " + normalized);
+            AddAlias("Support: " + normalized);
+        }
+
+        // Unique dump/game aliases.
+        if (normalized.Contains("Unique", StringComparison.OrdinalIgnoreCase))
+        {
+            AddAlias(normalized.Replace("Very Rare Unique item", "Very Rare Unique item", StringComparison.OrdinalIgnoreCase));
+            AddAlias(normalized.Replace("Rare Unique Item", "Rare Unique Item", StringComparison.OrdinalIgnoreCase));
+            AddAlias(normalized.Replace("Unique Item", "Unique Item", StringComparison.OrdinalIgnoreCase));
+        }
+
+        if (normalized.Contains("Orb of Transmutation", StringComparison.OrdinalIgnoreCase) ||
+            normalized.Contains("Orb of Augmentation", StringComparison.OrdinalIgnoreCase))
+        {
+            AddAlias(normalized.Replace("Orb of ", "Orb ", StringComparison.OrdinalIgnoreCase));
         }
     }
 
@@ -737,6 +850,260 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
     }
 
 
+
+    private void UpdateExpeditionModeCache()
+    {
+        if ((!Settings.EnableExpeditionMode.Value && !Settings.EnableExpeditionModeTooltip.Value) || !Settings.EnablePriceApi.Value)
+        {
+            cachedExpeditionModeEntries.Clear();
+            return;
+        }
+
+        if ((DateTime.UtcNow - lastExpeditionModeCacheTime).TotalMilliseconds < 1000)
+            return;
+
+        cachedExpeditionModeEntries.Clear();
+        lastExpeditionModeCacheTime = DateTime.UtcNow;
+
+        EnsureDisplayPriceModeApplied();
+
+        try
+        {
+            var hasEncounterEntity = GameController.EntityListWrapper.Entities.Any(x =>
+                x.Metadata.StartsWith("Metadata/MiscellaneousObjects/Expedition2/Expedition2Encounter", StringComparison.Ordinal));
+
+            if (!hasEncounterEntity)
+                return;
+
+            var labels = GameController.IngameState.IngameUi.ItemsOnGroundLabelsVisible
+                .Where(x => x?.ItemOnGround?.Metadata?.StartsWith("Metadata/MiscellaneousObjects/Expedition2/Expedition2Encounter", StringComparison.Ordinal) == true)
+                .Select(x => (GroundLabel: x, EncounterLabel: x.Label.AsObject<Expedition2EncounterLabel>()))
+                .Where(x => x.EncounterLabel != null)
+                .ToList();
+
+            if (labels.Count == 0)
+                return;
+
+            var areaLevel = GameController.IngameState.Data.CurrentAreaLevel;
+            var allRecipes = GameController.Files.Expedition2Recipes.EntriesList.ToLookup(x => x.RuneCountRequired);
+            var runeWeights = GameController.Files.Expedition2RunesWeights.EntriesList;
+            var index = 1;
+
+            foreach (var (groundLabel, encounterLabel) in labels)
+            {
+                var entity = groundLabel.ItemOnGround;
+                if (entity == null)
+                    continue;
+
+                var allowedRuneCounts = runeWeights
+                    .Where(x => x.RuneSlot - 1 == encounterLabel.FixedRunePosition)
+                    .Where(x => x.Rune.Equals(encounterLabel.FixedRune))
+                    .Where(x => x.Level <= areaLevel)
+                    .Select(x => x.SlotCount)
+                    .ToHashSet();
+
+                var rewards = allRecipes
+                    .Where(x => x.Key <= encounterLabel.RuneCount)
+                    .SelectMany(x => x)
+                    .Where(x => allowedRuneCounts.Contains(x.RuneCountRequired))
+                    .Where(x => x.MinLevelReq <= areaLevel && x.MaxLevelReq >= areaLevel)
+                    .Where(x => x.Runes.ElementAtOrDefault(encounterLabel.FixedRunePosition)?.Equals(encounterLabel.FixedRune) == true)
+                    .Select(ToPreOpenEntry)
+                    .Where(x => x != null)
+                    .Select(x => x!)
+                    .Where(x => Settings.ExpeditionModeShowZeroPriceRewards.Value || x.Value > 0)
+                    .Where(x => Settings.ExpeditionModeMinimumValue.Value <= 0 || x.Value >= Settings.ExpeditionModeMinimumValue.Value)
+                    .OrderByDescending(x => x.Value)
+                    .Take(Math.Max(1, Settings.ExpeditionModeMaxRewardsPerEncounter.Value))
+                    .ToList();
+
+                if (rewards.Count == 0)
+                    continue;
+
+                var rect = encounterLabel.GetClientRect();
+                var screenPos = rect.BottomLeft;
+
+                if (rect.Width <= 1 || rect.Height <= 1 || screenPos.X <= 0 || screenPos.Y <= 0)
+                {
+                    screenPos = new Vector2(0, 0);
+                }
+
+                var grid = new Vector2(entity.GridPos.X, entity.GridPos.Y);
+
+                cachedExpeditionModeEntries.Add(new ExpeditionModeEncounterEntry
+                {
+                    Index = index++,
+                    ScreenPosition = screenPos,
+                    GridPosition = grid,
+                    RuneCount = encounterLabel.RuneCount,
+                    FixedRune = Convert.ToString(encounterLabel.FixedRune) ?? string.Empty,
+                    Rewards = rewards
+                });
+            }
+        }
+        catch
+        {
+            // Best effort; never break main highlighter.
+        }
+    }
+
+
+    private void DrawExpeditionModeTooltips()
+    {
+        if (!Settings.EnableExpeditionModeTooltip.Value)
+            return;
+
+        if (cachedExpeditionModeEntries.Count == 0)
+            return;
+
+        var fallbackY = Settings.ExpeditionModeTooltipFallbackY.Value;
+        var fallbackX = Settings.ExpeditionModeTooltipFallbackX.Value;
+        var fallbackUsed = false;
+
+        foreach (var entry in cachedExpeditionModeEntries)
+        {
+            var rewards = entry.Rewards
+                .OrderByDescending(x => x.Value)
+                .ToList();
+
+            if (Settings.ExpeditionModeTooltipBestOnly.Value)
+                rewards = rewards.Take(1).ToList();
+            else if (Settings.ExpeditionModeTooltipTopTwoOnly.Value)
+                rewards = rewards.Take(2).ToList();
+            else
+                rewards = rewards.Take(Math.Max(1, Settings.ExpeditionModeMaxRewardsPerEncounter.Value)).ToList();
+
+            if (rewards.Count == 0)
+                continue;
+
+            var pos = new Vector2(
+                entry.ScreenPosition.X,
+                entry.ScreenPosition.Y);
+
+            var useFallback =
+                Settings.ExpeditionModeTooltipFallbackList.Value &&
+                (pos.X <= 1 || pos.Y <= 1 || pos.X > 10000 || pos.Y > 10000);
+
+            if (useFallback)
+            {
+                pos = new Vector2(fallbackX, fallbackY);
+                fallbackUsed = true;
+            }
+
+            var y = pos.Y;
+            var bg = Color.FromArgb(Settings.ExpeditionModeTooltipBackgroundOpacity.Value, 0, 0, 0);
+
+            if (useFallback)
+            {
+                var headerSize = Graphics.DrawTextWithBackground(
+                    $"Expedition #{entry.Index}  RuneCount {entry.RuneCount}",
+                    new Vector2(pos.X, y),
+                    Settings.ExpeditionModeHeaderColor,
+                    bg);
+
+                y += Math.Max(14, headerSize.Y);
+            }
+
+            for (var i = 0; i < rewards.Count; i++)
+            {
+                var reward = rewards[i];
+                var prefix = i == 0 ? "#1 " : i == 1 ? "#2 " : string.Empty;
+                var color = i == 0 ? Settings.TopPickColor : i == 1 ? Settings.SecondPickColor : Settings.FrameColor;
+                var text = $"{prefix}{FormatRewardValue(reward.Value)}  {reward.Name}";
+                var size = Graphics.DrawTextWithBackground(text, new Vector2(pos.X, y), color, bg);
+                y += Math.Max(14, size.Y);
+            }
+
+            if (useFallback)
+                fallbackY = (int)y + 8;
+        }
+
+        DrawExpeditionModeBestPickLine(fallbackY);
+
+        if (Settings.DebugStats.Value)
+        {
+            Graphics.DrawTextWithBackground(
+                $"ExpeditionMode tooltip entries: {cachedExpeditionModeEntries.Count}" + (fallbackUsed ? " fallback" : ""),
+                new Vector2(4, 170),
+                Color.White,
+                Color.FromArgb(180, 0, 0, 0));
+        }
+    }
+
+    private void DrawExpeditionModeBestPickLine(int fallbackY)
+    {
+        var best = cachedExpeditionModeEntries
+            .Where(x => x.Rewards.Count > 0)
+            .Select(x => new
+            {
+                Entry = x,
+                Reward = x.Rewards.OrderByDescending(r => r.Value).First()
+            })
+            .OrderByDescending(x => x.Reward.Value)
+            .FirstOrDefault();
+
+        if (best == null)
+            return;
+
+        var bg = Color.FromArgb(Settings.ExpeditionModeTooltipBackgroundOpacity.Value, 0, 0, 0);
+
+        // BEST PICK follows the fallback list position directly.
+        var pos = new Vector2(
+            Settings.ExpeditionModeTooltipFallbackX.Value,
+            fallbackY);
+
+        var text = $"BEST PICK EXPEDITION {best.Entry.Index} most valuable item : {FormatRewardValue(best.Reward.Value)}";
+        Graphics.DrawTextWithBackground(text, pos, Settings.TopPickColor, bg);
+    }
+
+    private void DrawExpeditionModeWindow()
+    {
+        if (!Settings.EnableExpeditionMode.Value)
+            return;
+
+        ImGui.SetNextWindowSize(new Vector2(520, 520), ImGuiCond.FirstUseEver);
+
+        if (!ImGui.Begin("RuneHighlighter ExpeditionMode"))
+        {
+            ImGui.End();
+            return;
+        }
+
+        ImGui.Text($"Detected encounters: {cachedExpeditionModeEntries.Count}");
+        ImGui.TextDisabled("Lists rewards from all detected expedition encounters on this map.");
+        ImGui.Separator();
+
+        if (cachedExpeditionModeEntries.Count == 0)
+        {
+            ImGui.TextDisabled("No expedition encounters detected yet.");
+            ImGui.End();
+            return;
+        }
+
+        foreach (var entry in cachedExpeditionModeEntries
+                     .OrderByDescending(x => x.Rewards.Count > 0 ? x.Rewards[0].Value : 0))
+        {
+            var best = entry.Rewards.Count > 0 ? entry.Rewards[0].Value : 0;
+            var header = $"#{entry.Index}  Best {FormatRewardValue(best)}  RuneCount {entry.RuneCount}  Rune {entry.FixedRune}";
+
+            if (!ImGui.CollapsingHeader(header, ImGuiTreeNodeFlags.DefaultOpen))
+                continue;
+
+            ImGui.TextDisabled($"Grid: {entry.GridPosition.X:0}, {entry.GridPosition.Y:0}");
+
+            for (var i = 0; i < entry.Rewards.Count; i++)
+            {
+                var reward = entry.Rewards[i];
+                var prefix = i == 0 ? "#1 " : i == 1 ? "#2 " : "   ";
+                ImGui.Text($"{prefix}{FormatRewardValue(reward.Value)}  {reward.Name}");
+            }
+
+            ImGui.Separator();
+        }
+
+        ImGui.End();
+    }
+
     private void DrawPreOpenPreview()
     {
         if (!Settings.EnablePreOpenPreview.Value)
@@ -783,27 +1150,50 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
         if (recipe == null)
             return null;
 
-        var name = string.IsNullOrWhiteSpace(recipe.Description) ? recipe.Reward?.BaseName : recipe.Description;
-        if (string.IsNullOrWhiteSpace(name))
+        var rawName = string.IsNullOrWhiteSpace(recipe.Description) ? recipe.Reward?.BaseName : recipe.Description;
+        if (string.IsNullOrWhiteSpace(rawName))
             return null;
 
-        if (!TryGetDisplayPriceForName(name, out var unitPrice))
+        var count = GetRecipeRewardCount(recipe);
+        var name = GetDumpBasedDisplayName(rawName, count);
+
+        if (!TryGetDisplayPriceForName(name, out var unitPrice) &&
+            !TryGetDisplayPriceForName(rawName, out unitPrice))
             unitPrice = 0;
 
-        var count = GetRecipeRewardCount(recipe);
         return new PreOpenPreviewEntry
         {
             Name = name,
-            Count = count,
-            Value = unitPrice * count
+            Count = 1,
+            Value = unitPrice * Math.Max(1, count)
         };
     }
 
+    private static string GetDumpBasedDisplayName(string rawName, int count)
+    {
+        rawName = CleanupText(rawName);
+        if (string.IsNullOrWhiteSpace(rawName))
+            return string.Empty;
+
+        rawName = Regex.Replace(rawName, @"\[Rarity\|Unique\]", "Unique", RegexOptions.IgnoreCase).Trim();
+
+        var baseName = NormalizeRewardSelectionName(rawName);
+
+        var skillNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "animus exchange", "animus splinters", "bitter dead", "conductive runes", "detonate living", "eternal march", "explosive transmutation", "fragments of the past", "frostflame nova", "grim pillars", "hollow shell", "leylines", "powered by verisium", "refutation", "remnants of kalguur", "repulsion", "runic reprieve", "skyfall", "triskelion cascade", "verisium manifestations", "voltaic barrier", "wardbound minions" };
+        if (skillNames.Contains(baseName))
+            return "Skill: " + baseName;
+
+        var supportNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "concussive runes", "fist of kalguur", "healing runes", "runeforged blades", "runic extraction", "runic infusion", "scouring flame" };
+        if (supportNames.Contains(baseName))
+            return "Support: " + baseName;
+
+        return NormalizeRecipeDisplayName(rawName, count);
+    }
 
     private void DrawPreOpenPreviewBestReward(Vector2 pos, PreOpenPreviewEntry entry)
     {
         var line1 = $"[BEST] {FormatRewardValue(entry.Value)}";
-        var line2 = $"{entry.Name} x{entry.Count}";
+        var line2 = entry.Count > 1 ? $"{entry.Name} x{entry.Count}" : entry.Name;
 
         var color = Settings.TopPickColor;
         var bg = Color.FromArgb(225, 0, 0, 0);
@@ -826,7 +1216,7 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
             var entry = entries[i];
             var prefix = i == 0 ? "#1 " : i == 1 ? "#2 " : string.Empty;
             var color = i == 0 ? Settings.TopPickColor : i == 1 ? Settings.SecondPickColor : Settings.FrameColor;
-            var text = $"{prefix}{FormatRewardValue(entry.Value)}  {entry.Name} x{entry.Count}";
+            var text = entry.Count > 1 ? $"{prefix}{FormatRewardValue(entry.Value)}  {entry.Name} x{entry.Count}" : $"{prefix}{FormatRewardValue(entry.Value)}  {entry.Name}";
             var size = Graphics.DrawTextWithBackground(text, new Vector2(pos.X, y), color, Color.FromArgb(Settings.PreviewBackgroundOpacity.Value, 0, 0, 0));
             y += Math.Max(14, size.Y);
         }
@@ -1300,9 +1690,12 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
         // Keep the full Alloy name, but add common detailsId variants.
         if (name.EndsWith(" Alloy", StringComparison.OrdinalIgnoreCase))
         {
+            // Alloy price alias fix for Protective/Expansive duplicate rows.
             output[name.Replace(" ", "-").ToLowerInvariant()] = value;
             output[name.Replace(" ", "_").ToLowerInvariant()] = value;
             output[name.Replace(" ", "").ToLowerInvariant()] = value;
+            output[name.Replace(" Alloy", "", StringComparison.OrdinalIgnoreCase).Trim()] = value;
+            output[name.Replace(" Alloy", "", StringComparison.OrdinalIgnoreCase).Trim().ToLowerInvariant()] = value;
         }
 
 
@@ -1334,6 +1727,53 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
         };
     }
 
+
+    private bool TryGetAlloyFallbackPrice(string name, out double price)
+    {
+        price = 0;
+
+        var alloyNames = new[]
+        {
+            "Expansive Alloy",
+            "Protective Alloy",
+            "Adaptive Alloy",
+            "Runic Alloy",
+            "Cyclonic Alloy",
+            "Prismatic Alloy",
+            "Mystic Alloy",
+            "Sovereign Alloy",
+            "Celestial Alloy",
+            "Transcendent Alloy",
+            "The Runefather's Alloy",
+            "The Runebinder's Alloy"
+        };
+
+        var clean = CleanupText(name);
+
+        foreach (var alloy in alloyNames)
+        {
+            if (!clean.Contains(alloy, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            lock (priceLock)
+            {
+                if (priceCache.TryGetValue(alloy, out price) && price > 0)
+                    return true;
+
+                if (priceCache.TryGetValue(alloy.Replace(" ", "-").ToLowerInvariant(), out price) && price > 0)
+                    return true;
+
+                if (priceCache.TryGetValue(alloy.Replace(" ", "_").ToLowerInvariant(), out price) && price > 0)
+                    return true;
+
+                if (priceCache.TryGetValue(alloy.Replace(" ", "").ToLowerInvariant(), out price) && price > 0)
+                    return true;
+            }
+        }
+
+        return false;
+    }
+
     private (double UnitPrice, int StackSize, double TotalValue) GetRewardPrice(string rewardText)
     {
         if (!Settings.EnablePriceApi.Value)
@@ -1355,6 +1795,12 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
                     return (price, stack, price * stack);
                 }
             }
+        }
+
+        if (TryGetAlloyFallbackPrice(name, out var alloyPrice))
+        {
+            lastPriceHits++;
+            return (alloyPrice, stack, alloyPrice * stack);
         }
 
         lastPriceMisses++;
@@ -1426,10 +1872,13 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
         Add(name.Replace(" ", "_").ToLowerInvariant());
         if (name.EndsWith(" Alloy", StringComparison.OrdinalIgnoreCase))
         {
+            // Alloy lookup aliases for Protective/Expansive.
             Add(name.Replace(" Alloy", "", StringComparison.OrdinalIgnoreCase).Trim());
             Add(name.Replace(" ", "").ToLowerInvariant());
             Add(name.Replace(" ", "-").ToLowerInvariant());
             Add(name.Replace(" ", "_").ToLowerInvariant());
+            Add(name.ToLowerInvariant());
+            Add(name.Replace(" ", " ").Trim());
         }
 
 
@@ -1460,6 +1909,8 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
     private static string CleanPriceLookupName(string name)
     {
         name = CleanupText(name);
+        name = Regex.Replace(name, @"^\s*\d+\s*x\s+", "", RegexOptions.IgnoreCase).Trim();
+        name = Regex.Replace(name, @"\[Rarity\|Unique\]", "Unique", RegexOptions.IgnoreCase).Trim();
         name = System.Text.RegularExpressions.Regex.Replace(name, @"\s+\(Level\s+\d+\)$", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
         return name.Trim();
     }
@@ -1792,6 +2243,42 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
     }
 
 
+
+    private bool IsEnabledAlloyRewardText(string text)
+    {
+        var clean = CleanupText(text);
+        if (string.IsNullOrWhiteSpace(clean))
+            return false;
+
+        var alloyNames = new[]
+        {
+            "Expansive Alloy",
+            "Protective Alloy",
+            "Adaptive Alloy",
+            "Runic Alloy",
+            "Cyclonic Alloy",
+            "Prismatic Alloy",
+            "Mystic Alloy",
+            "Sovereign Alloy",
+            "Celestial Alloy",
+            "Transcendent Alloy",
+            "The Runefather's Alloy",
+            "The Runebinder's Alloy"
+        };
+
+        foreach (var alloy in alloyNames)
+        {
+            if (!clean.Contains(alloy, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            // Respect Reward Selection: only match if the alloy reward is enabled.
+            if (enabledItemNames.Contains(alloy) || enabledItemNames.Contains("1x " + alloy) || enabledItemNames.Contains(clean))
+                return true;
+        }
+
+        return false;
+    }
+
     private bool IsEnabledRewardText(string text)
     {
         var clean = CleanupText(text);
@@ -1820,6 +2307,16 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
         if (enabledItemNames.Contains("1x " + normalized))
             return true;
 
+        if (enabledItemNames.Contains(NormalizeRecipeDisplayName(normalized, 1)))
+            return true;
+
+        var uniqueNormalized = Regex.Replace(clean, @"\[Rarity\|Unique\]", "Unique", RegexOptions.IgnoreCase);
+        if (enabledItemNames.Contains(uniqueNormalized) || enabledItemNames.Contains(NormalizeRewardSelectionName(uniqueNormalized)))
+            return true;
+
+        if (IsEnabledAlloyRewardText(clean))
+            return true;
+
         return false;
     }
 
@@ -1828,7 +2325,37 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
         text = CleanupText(text);
         text = Regex.Replace(text, @"^\s*\d+\s*x\s+", "", RegexOptions.IgnoreCase).Trim();
         text = Regex.Replace(text, @"^(Skill|Support):\s*", "", RegexOptions.IgnoreCase).Trim();
+        text = Regex.Replace(text, @"\[Rarity\|Unique\]", "Unique", RegexOptions.IgnoreCase).Trim();
+        text = Regex.Replace(text, @"\s+", " ").Trim();
         return CleanupText(text);
+    }
+
+    private static string NormalizeRecipeDisplayName(string name, int count = 1)
+    {
+        name = CleanupText(name);
+        if (string.IsNullOrWhiteSpace(name))
+            return string.Empty;
+
+        name = Regex.Replace(name, @"\[Rarity\|Unique\]", "Unique", RegexOptions.IgnoreCase).Trim();
+
+        if (name.StartsWith("Skill:", StringComparison.OrdinalIgnoreCase) ||
+            name.StartsWith("Support:", StringComparison.OrdinalIgnoreCase))
+            return name;
+
+        if (Regex.IsMatch(name, @"^\d+\s*x\s+", RegexOptions.IgnoreCase))
+            return CleanupText(name);
+
+        // Unique text rewards and description-only rewards in the game do not need "1x".
+        if (name.Contains("Unique", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(name, "Krillson's Bay Key", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(name, "Verisium Pile", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(name, "5x Random Currency", StringComparison.OrdinalIgnoreCase))
+            return name;
+
+        if (count > 1)
+            return $"{count}x {name}";
+
+        return "1x " + name;
     }
 
     private bool IsRewardListPanel(object element)
@@ -1851,7 +2378,7 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
             if (string.IsNullOrWhiteSpace(text))
                 continue;
 
-            if (IsEnabledRewardText(text))
+            if (IsEnabledRewardText(text) || IsEnabledAlloyRewardText(text))
                 selectedRows++;
 
             if (LooksLikeRewardText(text))
@@ -1881,7 +2408,7 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
                 continue;
 
             var itemName = NormalizeForFilter(text);
-            var isSelected = IsEnabledRewardText(text);
+            var isSelected = IsEnabledRewardText(text) || IsEnabledAlloyRewardText(text);
             var isRewardLike = LooksLikeRewardText(text);
 
             if (Settings.HighlightAllVisibleRewards.Value)
@@ -1906,7 +2433,10 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
             if (!IsGoodRect(rect))
                 continue;
 
-            if (visibleRewards.Any(x => SameRect(x.Rect, rect) || string.Equals(x.Text, text, StringComparison.OrdinalIgnoreCase)))
+            if (visibleRewards.Any(x => SameRect(x.Rect, rect) ||
+                (string.Equals(x.Text, text, StringComparison.OrdinalIgnoreCase) &&
+                 Math.Abs(x.Rect.Y - rect.Y) < 20 &&
+                 Math.Abs(x.Rect.X - rect.X) < 40)))
                 continue;
 
             var priceInfo = GetRewardPrice(text);
