@@ -45,6 +45,8 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
     private readonly Dictionary<string, PropertyInfo> rewardProperties = new();
     private readonly HashSet<string> enabledItemNames = new(StringComparer.OrdinalIgnoreCase);
     private readonly List<VisibleReward> visibleRewards = new();
+    private readonly Dictionary<string, VisibleReward> stableVisibleRewardCache = new(StringComparer.OrdinalIgnoreCase);
+    private int consecutiveEmptyRewardScans;
 
     private static readonly HttpClient priceHttpClient = new();
 
@@ -94,6 +96,49 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
         return base.Initialise();
     }
 
+    private void ApplyVisibleRewardFlickerProtection()
+    {
+        // Strong session-sticky cache:
+        // While the reward panel is open, the sticky cache becomes the source of truth for drawing.
+        // If one reward disappears from a single live scan, it still remains visible until the panel closes.
+        if (visibleRewards.Count == 0)
+        {
+            consecutiveEmptyRewardScans++;
+
+            if (consecutiveEmptyRewardScans >= 3)
+                stableVisibleRewardCache.Clear();
+
+            return;
+        }
+
+        consecutiveEmptyRewardScans = 0;
+
+        // Update cache with all currently detected rewards.
+        foreach (var reward in visibleRewards)
+        {
+            var key = GetVisibleRewardStableKey(reward);
+            if (!string.IsNullOrWhiteSpace(key))
+                stableVisibleRewardCache[key] = reward;
+        }
+
+        // Draw from the full session cache, not only from this scan.
+        visibleRewards.Clear();
+
+        foreach (var reward in stableVisibleRewardCache.Values
+                     .OrderBy(x => x.Rect.Y)
+                     .ThenBy(x => x.Rect.X))
+        {
+            visibleRewards.Add(reward);
+        }
+    }
+
+    private static string GetVisibleRewardStableKey(VisibleReward reward)
+    {
+        // Text is intentionally used as the session identity.
+        // Some rows, e.g. Warding Rune of Obsession, can disappear from one scan even though the panel is still open.
+        return string.IsNullOrWhiteSpace(reward.Text) ? string.Empty : reward.Text.Trim();
+    }
+
     public override void Render()
     {
         if (!Settings.Enable.Value)
@@ -110,6 +155,7 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
                 EnsureDisplayPriceModeApplied();
                 RefreshPricesIfNeeded();
                 ScanPanel40();
+                ApplyVisibleRewardFlickerProtection();
                 lastScan = now;
             }
 
@@ -339,6 +385,7 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
         ImGui.Separator();
         ImGui.Text($"Enabled Reward Filters: {enabledItemNames.Count}");
         ImGui.Text($"Visible Reward Matches: {visibleRewards.Count}");
+        ImGui.Text($"Sticky Reward Session Cache: {stableVisibleRewardCache.Count}");
         ImGui.Text($"Price Status: {priceStatus}");
         ImGui.Text($"Display Price Cache Items: {priceCache.Count}");
         ImGui.Text($"Raw Price Cache Items: {rawPriceCache.Count}");
