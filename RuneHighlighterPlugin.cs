@@ -4,6 +4,7 @@ using ExileCore2.PoEMemory.MemoryObjects;
 using ExileCore2.PoEMemory.FilesInMemory;
 using ExileCore2.PoEMemory.Elements;
 using System;
+using System.Text.RegularExpressions;
 using System.Collections;
 using System.Collections.Generic;
 using System.Drawing;
@@ -595,11 +596,44 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
                 continue;
 
             var node = prop.GetValue(Settings.Rewards);
-            if (SafeBool(node, "Value"))
-                enabledItemNames.Add(CleanupText(itemName));
+            if (!SafeBool(node, "Value"))
+                continue;
+
+            AddEnabledRewardName(itemName);
         }
     }
 
+    private void AddEnabledRewardName(string itemName)
+    {
+        var clean = CleanupText(itemName);
+        if (string.IsNullOrWhiteSpace(clean))
+            return;
+
+        var normalized = NormalizeRewardSelectionName(clean);
+
+        enabledItemNames.Add(clean);
+        enabledItemNames.Add(normalized);
+        enabledItemNames.Add("1x " + normalized);
+
+        if (normalized.Contains("Orb of Transmutation", StringComparison.OrdinalIgnoreCase) ||
+            normalized.Contains("Orb of Augmentation", StringComparison.OrdinalIgnoreCase))
+        {
+            enabledItemNames.Add(normalized.Replace("Orb of ", "Orb ", StringComparison.OrdinalIgnoreCase));
+        }
+
+        if (clean.StartsWith("Skill:", StringComparison.OrdinalIgnoreCase) ||
+            clean.StartsWith("Support:", StringComparison.OrdinalIgnoreCase))
+        {
+            enabledItemNames.Add(normalized);
+            enabledItemNames.Add("1x " + normalized);
+        }
+        else
+        {
+            // Allow PoE2DB/base names to match in-game gem labels.
+            enabledItemNames.Add("Skill: " + normalized);
+            enabledItemNames.Add("Support: " + normalized);
+        }
+    }
 
     private void UpdatePreOpenPreviewCache()
     {
@@ -754,7 +788,7 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
             return null;
 
         if (!TryGetDisplayPriceForName(name, out var unitPrice))
-            return null;
+            unitPrice = 0;
 
         var count = GetRecipeRewardCount(recipe);
         return new PreOpenPreviewEntry
@@ -1330,7 +1364,7 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
 
     private static IEnumerable<string> BuildPriceLookupCandidates(string name)
     {
-        name = CleanPriceLookupName(name);
+        name = StripRewardDisplayPrefix(CleanPriceLookupName(name));
 
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var yieldBuffer = new List<string>();
@@ -1368,6 +1402,8 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
 
             if (name.Contains(" Rune", StringComparison.OrdinalIgnoreCase))
             {
+                if (name.Contains("Rune of Hollowing", StringComparison.OrdinalIgnoreCase))
+                    Add(name.Replace("Rune of Hollowing", "Rune Hollowing", StringComparison.OrdinalIgnoreCase));
                 Add(withoutGreater);
                 Add(withoutLesser);
                 Add(withoutGreater.Replace(" Rune of ", " Rune ", StringComparison.OrdinalIgnoreCase));
@@ -1375,6 +1411,14 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
                 Add(name.Replace(" Rune of ", " Rune ", StringComparison.OrdinalIgnoreCase));
                 Add(name.Replace(" Rune", "", StringComparison.OrdinalIgnoreCase));
             }
+        }
+
+        if (name.Contains("Orb of Transmutation", StringComparison.OrdinalIgnoreCase) ||
+            name.Contains("Orb of Augmentation", StringComparison.OrdinalIgnoreCase))
+        {
+            Add(name.Replace("Orb of ", "Orb ", StringComparison.OrdinalIgnoreCase));
+            Add(name.Replace("Greater Orb of ", "Greater Orb ", StringComparison.OrdinalIgnoreCase));
+            Add(name.Replace("Perfect Orb of ", "Perfect Orb ", StringComparison.OrdinalIgnoreCase));
         }
 
         // Exact detailsId-like variants are safe because they still represent the same full item.
@@ -1403,6 +1447,14 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
             return (Math.Max(1, stack), match.Groups[2].Value.Trim());
 
         return (1, rewardText);
+    }
+
+
+    private static string StripRewardDisplayPrefix(string name)
+    {
+        name = CleanupText(name);
+        name = Regex.Replace(name, @"^(Skill|Support):\s*", "", RegexOptions.IgnoreCase).Trim();
+        return name;
     }
 
     private static string CleanPriceLookupName(string name)
@@ -1739,6 +1791,46 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
         }
     }
 
+
+    private bool IsEnabledRewardText(string text)
+    {
+        var clean = CleanupText(text);
+        if (string.IsNullOrWhiteSpace(clean))
+            return false;
+
+        if (enabledItemNames.Contains(clean))
+            return true;
+
+        var normalized = NormalizeRewardSelectionName(clean);
+        if (enabledItemNames.Contains(normalized))
+            return true;
+
+        if (clean.StartsWith("Skill:", StringComparison.OrdinalIgnoreCase) ||
+            clean.StartsWith("Support:", StringComparison.OrdinalIgnoreCase))
+        {
+            var withoutPrefix = Regex.Replace(clean, @"^(Skill|Support):\s*", "", RegexOptions.IgnoreCase).Trim();
+            if (enabledItemNames.Contains(withoutPrefix) || enabledItemNames.Contains("1x " + withoutPrefix))
+                return true;
+        }
+
+        // If catalog has Skill:/Support: and live/pre-open gives base name.
+        if (enabledItemNames.Contains("Skill: " + normalized) || enabledItemNames.Contains("Support: " + normalized))
+            return true;
+
+        if (enabledItemNames.Contains("1x " + normalized))
+            return true;
+
+        return false;
+    }
+
+    private static string NormalizeRewardSelectionName(string text)
+    {
+        text = CleanupText(text);
+        text = Regex.Replace(text, @"^\s*\d+\s*x\s+", "", RegexOptions.IgnoreCase).Trim();
+        text = Regex.Replace(text, @"^(Skill|Support):\s*", "", RegexOptions.IgnoreCase).Trim();
+        return CleanupText(text);
+    }
+
     private bool IsRewardListPanel(object element)
     {
         var childCount = GetInt(element, "ChildCount");
@@ -1759,7 +1851,7 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
             if (string.IsNullOrWhiteSpace(text))
                 continue;
 
-            if (enabledItemNames.Contains(NormalizeForFilter(text)))
+            if (IsEnabledRewardText(text))
                 selectedRows++;
 
             if (LooksLikeRewardText(text))
@@ -1789,7 +1881,7 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
                 continue;
 
             var itemName = NormalizeForFilter(text);
-            var isSelected = enabledItemNames.Contains(itemName);
+            var isSelected = IsEnabledRewardText(text);
             var isRewardLike = LooksLikeRewardText(text);
 
             if (Settings.HighlightAllVisibleRewards.Value)

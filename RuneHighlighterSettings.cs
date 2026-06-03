@@ -1052,4 +1052,7 @@ public class RewardItemSettings
     [Menu("1x Uncut Support Gem (Level 4)")]
     public ToggleNode Reward_Uncut_Support_Gem_Level_4 { get; set; } = new ToggleNode(true);
 
+    [Menu("Unique Item")]
+    public ToggleNode Reward__Unique_Item { get; set; } = new ToggleNode(true);
+
 }

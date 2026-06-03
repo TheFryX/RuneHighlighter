@@ -310,5 +310,6 @@ public static class RewardCatalog
         ("Reward_Uncut_Spirit_Gem_Level_11", "1x Uncut Spirit Gem (Level 11)"),
         ("Reward_Uncut_Skill_Gem_Level_11", "1x Uncut Skill Gem (Level 11)"),
         ("Reward_Uncut_Support_Gem_Level_4", "1x Uncut Support Gem (Level 4)"),
+        ("Reward__Unique_Item", "Unique Item"),
     };
 }
