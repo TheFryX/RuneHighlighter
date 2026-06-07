@@ -2,8 +2,8 @@ namespace RuneHighlighter;
 
 public static class RewardCatalog
 {
-    // Generated from Expedition2Good_RewardDump.txt.
-    // Manual filter remains available through Reward Selection.
+    
+    
     public static readonly (string Property, string Name)[] Items =
     {
         ("Reward__10x_Divine_Orb", "10x Divine Orb"),

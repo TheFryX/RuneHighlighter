@@ -18,19 +18,19 @@ public class RuneHighlighterSettings : ISettings
     public ToggleNode OnlyIsVisible { get; set; } = new ToggleNode(true);
 
     [Menu("Scan Interval (ms)")]
-    public RangeNode<int> ScanIntervalMs { get; set; } = new RangeNode<int>(80, 30, 2000);
+    public RangeNode<int> ScanIntervalMs { get; set; } = new RangeNode<int>(250, 80, 2000);
 
     [Menu("Dynamic Root Local Depth", "Small local scan under detected reward root candidates only, used when known paths do not work.")]
-    public RangeNode<int> Panel40LocalDepth { get; set; } = new RangeNode<int>(5, 2, 8);
+    public RangeNode<int> Panel40LocalDepth { get; set; } = new RangeNode<int>(3, 2, 8);
 
     [Menu("Max Local Objects")]
-    public RangeNode<int> MaxLocalObjects { get; set; } = new RangeNode<int>(1200, 100, 5000);
+    public RangeNode<int> MaxLocalObjects { get; set; } = new RangeNode<int>(650, 100, 5000);
 
     [Menu("Max Reward Rows")]
-    public RangeNode<int> MaxRewardRows { get; set; } = new RangeNode<int>(360, 50, 700);
+    public RangeNode<int> MaxRewardRows { get; set; } = new RangeNode<int>(180, 50, 700);
 
     [Menu("Min Reward Panel Children")]
-    public RangeNode<int> MinRewardPanelChildren { get; set; } = new RangeNode<int>(250, 50, 500);
+    public RangeNode<int> MinRewardPanelChildren { get; set; } = new RangeNode<int>(120, 50, 500);
 
     [Menu("Frame Thickness")]
     public RangeNode<int> FrameThickness { get; set; } = new RangeNode<int>(4, 1, 10);
@@ -41,8 +41,29 @@ public class RuneHighlighterSettings : ISettings
     [Menu("Draw Full Row")]
     public ToggleNode DrawFullRow { get; set; } = new ToggleNode(true);
 
+    [Menu("Use Pre-Open Cache For UI Highlights", "ON = opened UI highlighter reuses cheap Pre-Open reward/pricing cache and only scans visible row anchors. This avoids expensive per-row price/text evaluation.")]
+    public ToggleNode UsePreOpenCacheForUiHighlights { get; set; } = new ToggleNode(true);
+
+    [Menu("Pre-Open UI Full Rescan Interval (ms)", "Minimum interval for expensive opened-UI text rescans when Pre-Open cache is available. Higher values are smoother.")]
+    public RangeNode<int> PreOpenUiFullRescanIntervalMs { get; set; } = new RangeNode<int>(1500, 500, 5000);
+
     [Menu("Show Debug Overlay")]
     public ToggleNode DebugStats { get; set; } = new ToggleNode(false);
+
+    [Menu("Enable Spike Profiler", "Shows per-section timing in the debug overlay so costly hot paths are visible in-game.")]
+    public ToggleNode EnableSpikeProfiler { get; set; } = new ToggleNode(false);
+
+    [Menu("Enable Profiler TXT Log", "Writes RuneHighlighter profiler samples to Plugins/RuneHighlighter/Profiler/runehighlighter_debug.txt.")]
+    public ToggleNode EnableProfilerTextLog { get; set; } = new ToggleNode(false);
+
+    [Menu("Profiler TXT Log Only Spikes", "ON = write only sections above Spike Profiler Warn Ms. OFF = write regular full samples.")]
+    public ToggleNode ProfilerTextLogOnlySpikes { get; set; } = new ToggleNode(false);
+
+    [Menu("Profiler TXT Log Interval (ms)", "How often the TXT profiler writes a sample. Higher values reduce disk writes.")]
+    public RangeNode<int> ProfilerTextLogIntervalMs { get; set; } = new RangeNode<int>(1000, 250, 10000);
+
+    [Menu("Spike Profiler Warn Ms", "Profiler rows at or above this last-frame time are drawn in orange/red and marked as SPIKE in TXT.")]
+    public RangeNode<int> SpikeProfilerWarnMs { get; set; } = new RangeNode<int>(3, 1, 100);
 
     [Menu("Enable Price API", "Standalone poe.ninja price cache. No NinjaPricer bridge.")]
     public ToggleNode EnablePriceApi { get; set; } = new ToggleNode(true);
@@ -102,7 +123,7 @@ public class RuneHighlighterSettings : ISettings
     public RangeNode<int> ExpeditionModeTooltipBackgroundOpacity { get; set; } = new RangeNode<int>(210, 0, 255);
 
     [Menu("ExpeditionMode Header Color")]
-    public ColorNode ExpeditionModeHeaderColor { get; set; } = new ColorNode(Color.DeepPink);
+    public ColorNode ExpeditionModeHeaderColor { get; set; } = new ColorNode(Color.White);
 
     [Menu("ExpeditionMode Tooltip Fallback List", "If encounter screen position is not drawable, show tooltip entries in a fixed list on the screen.")]
     public ToggleNode ExpeditionModeTooltipFallbackList { get; set; } = new ToggleNode(true);
