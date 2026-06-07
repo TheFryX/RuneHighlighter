@@ -45,6 +45,7 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
 
     private readonly Dictionary<string, PropertyInfo> rewardProperties = new();
     private readonly HashSet<string> enabledItemNames = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> enabledItemLooseKeys = new(StringComparer.OrdinalIgnoreCase);
     private readonly List<VisibleReward> visibleRewards = new();
     private readonly Dictionary<string, (VisibleReward Reward, DateTime LastSeenUtc)> stableVisibleRewardCache = new(StringComparer.OrdinalIgnoreCase);
     private int consecutiveEmptyRewardScans;
@@ -686,6 +687,7 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
     private void RebuildEnabledRewards()
     {
         enabledItemNames.Clear();
+        enabledItemLooseKeys.Clear();
 
         foreach (var (propertyName, itemName) in RewardCatalog.Items)
         {
@@ -700,6 +702,16 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
         }
     }
 
+
+    private static string NormalizeLooseRewardKey(string text)
+    {
+        text = CleanupText(text);
+        text = Regex.Replace(text, @"^\s*\d+\s*x\s+", "", RegexOptions.IgnoreCase).Trim();
+        text = Regex.Replace(text, @"^(Skill|Support):\s*", "", RegexOptions.IgnoreCase).Trim();
+        text = Regex.Replace(text, @"\[Rarity\|Unique\]", "Unique", RegexOptions.IgnoreCase).Trim();
+        return Regex.Replace(text.ToLowerInvariant(), @"[^a-z0-9]+", "");
+    }
+
     private void AddEnabledRewardName(string itemName)
     {
         var clean = CleanupText(itemName);
@@ -711,8 +723,14 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
         void AddAlias(string? value)
         {
             value = CleanupText(value ?? string.Empty);
-            if (!string.IsNullOrWhiteSpace(value))
-                enabledItemNames.Add(value);
+            if (string.IsNullOrWhiteSpace(value))
+                return;
+
+            enabledItemNames.Add(value);
+
+            var looseKey = NormalizeLooseRewardKey(value);
+            if (!string.IsNullOrWhiteSpace(looseKey))
+                enabledItemLooseKeys.Add(looseKey);
         }
 
         AddAlias(clean);
@@ -2310,6 +2328,10 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
         if (enabledItemNames.Contains(NormalizeRecipeDisplayName(normalized, 1)))
             return true;
 
+        var looseKey = NormalizeLooseRewardKey(clean);
+        if (!string.IsNullOrWhiteSpace(looseKey) && enabledItemLooseKeys.Contains(looseKey))
+            return true;
+
         var uniqueNormalized = Regex.Replace(clean, @"\[Rarity\|Unique\]", "Unique", RegexOptions.IgnoreCase);
         if (enabledItemNames.Contains(uniqueNormalized) || enabledItemNames.Contains(NormalizeRewardSelectionName(uniqueNormalized)))
             return true;
@@ -2358,6 +2380,68 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
         return "1x " + name;
     }
 
+
+    private string ExtractRewardTextFromRow(object row, object? preferredTextElement = null)
+    {
+        var preferred = CleanupText(Convert.ToString(SafeGet(preferredTextElement, "TextNoTags") ?? SafeGet(preferredTextElement, "Text") ?? string.Empty) ?? string.Empty);
+        if (IsStrongRewardText(preferred))
+            return preferred;
+
+        var candidates = new List<string>();
+        CollectRewardTextCandidates(row, 5, candidates);
+
+        return candidates
+            .Select(CleanupText)
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Where(IsStrongRewardText)
+            .OrderByDescending(x => IsEnabledRewardText(x) || IsEnabledAlloyRewardText(x))
+            .ThenByDescending(x => GetRewardPrice(x).TotalValue)
+            .ThenByDescending(x => x.Length)
+            .FirstOrDefault() ?? preferred;
+    }
+
+    private void CollectRewardTextCandidates(object? element, int depth, List<string> output)
+    {
+        if (element == null || depth < 0 || output.Count > 64)
+            return;
+
+        var text = CleanupText(Convert.ToString(SafeGet(element, "TextNoTags") ?? SafeGet(element, "Text") ?? string.Empty) ?? string.Empty);
+        if (!string.IsNullOrWhiteSpace(text))
+            output.Add(text);
+
+        foreach (var child in GetChildren(element))
+            CollectRewardTextCandidates(child, depth - 1, output);
+    }
+
+    private static bool IsStrongRewardText(string text)
+    {
+        text = CleanupText(text);
+
+        if (string.IsNullOrWhiteSpace(text) || text.Length > 140)
+            return false;
+
+        if (text.Contains("Metadata/", StringComparison.OrdinalIgnoreCase) ||
+            text.Contains("Art/Textures", StringComparison.OrdinalIgnoreCase) ||
+            text.Equals("Undiscovered", StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        if (Regex.IsMatch(text, @"^\s*\d+\s*x\s+.+", RegexOptions.IgnoreCase))
+            return true;
+
+        return text.StartsWith("Skill:", StringComparison.OrdinalIgnoreCase) ||
+               text.StartsWith("Support:", StringComparison.OrdinalIgnoreCase) ||
+               text.Contains("Rune", StringComparison.OrdinalIgnoreCase) ||
+               text.Contains("Orb", StringComparison.OrdinalIgnoreCase) ||
+               text.Contains("Alloy", StringComparison.OrdinalIgnoreCase) ||
+               text.Contains("Flux", StringComparison.OrdinalIgnoreCase) ||
+               text.Contains("Gem", StringComparison.OrdinalIgnoreCase) ||
+               text.Contains("Unique", StringComparison.OrdinalIgnoreCase) ||
+               text.Contains("Whetstone", StringComparison.OrdinalIgnoreCase) ||
+               text.Contains("Scrap", StringComparison.OrdinalIgnoreCase) ||
+               text.Contains("Etcher", StringComparison.OrdinalIgnoreCase) ||
+               text.Contains("Bauble", StringComparison.OrdinalIgnoreCase);
+    }
+
     private bool IsRewardListPanel(object element)
     {
         var childCount = GetInt(element, "ChildCount");
@@ -2372,8 +2456,8 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
 
         foreach (var row in children.Take(Settings.MaxRewardRows.Value))
         {
-            var textElement = FindTextElement(row, 3);
-            var text = CleanupText(Convert.ToString(SafeGet(textElement, "TextNoTags") ?? SafeGet(textElement, "Text") ?? string.Empty) ?? string.Empty);
+            var textElement = FindTextElement(row, 5);
+            var text = ExtractRewardTextFromRow(row, textElement);
 
             if (string.IsNullOrWhiteSpace(text))
                 continue;
@@ -2398,11 +2482,8 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
 
         foreach (var row in rows)
         {
-            var textElement = FindTextElement(row, 3);
-            if (textElement == null)
-                continue;
-
-            var text = CleanupText(Convert.ToString(SafeGet(textElement, "TextNoTags") ?? SafeGet(textElement, "Text") ?? string.Empty) ?? string.Empty);
+            var textElement = FindTextElement(row, 5);
+            var text = ExtractRewardTextFromRow(row, textElement);
 
             if (string.IsNullOrWhiteSpace(text))
                 continue;
@@ -2411,23 +2492,28 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
             var isSelected = IsEnabledRewardText(text) || IsEnabledAlloyRewardText(text);
             var isRewardLike = LooksLikeRewardText(text);
 
-            if (Settings.HighlightAllVisibleRewards.Value)
-            {
-                if (!isRewardLike)
-                    continue;
-            }
-            else if (!isSelected)
-            {
+            if (!isRewardLike)
                 continue;
-            }
+
+            var priceInfo = GetRewardPrice(text);
+            var wantsPriceBasedHighlight =
+                Settings.HighlightMostValuableReward.Value ||
+                Settings.HighlightOnlyTopTwoPicks.Value ||
+                Settings.HighlightOnlyRewardsAboveValue.Value;
+
+            var includeByFilter = Settings.HighlightAllVisibleRewards.Value || isSelected;
+            var includeByPriceMode = wantsPriceBasedHighlight && priceInfo.TotalValue > 0;
+
+            if (!includeByFilter && !includeByPriceMode)
+                continue;
 
             if (!IsActuallyVisible(row) && !IsActuallyVisible(textElement))
                 continue;
 
-            var rectSource = Settings.DrawFullRow.Value ? row : textElement;
+            var rectSource = Settings.DrawFullRow.Value || textElement == null ? row : textElement;
             var rect = GetRect(rectSource);
 
-            if (!IsGoodRect(rect))
+            if (!IsGoodRect(rect) && textElement != null)
                 rect = GetRect(textElement);
 
             if (!IsGoodRect(rect))
@@ -2439,7 +2525,6 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
                  Math.Abs(x.Rect.X - rect.X) < 40)))
                 continue;
 
-            var priceInfo = GetRewardPrice(text);
             visibleRewards.Add(new VisibleReward(rect, text, priceInfo.UnitPrice, priceInfo.StackSize, priceInfo.TotalValue));
         }
     }
