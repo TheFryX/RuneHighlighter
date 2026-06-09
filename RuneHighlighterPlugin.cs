@@ -3,6 +3,7 @@ using ExileCore2.Shared.Cache;
 using ExileCore2.PoEMemory.MemoryObjects;
 using ExileCore2.PoEMemory.FilesInMemory;
 using ExileCore2.PoEMemory.Elements;
+using ExileCore2.PoEMemory.Components;
 using System;
 using System.Text.RegularExpressions;
 using System.Collections;
@@ -1702,9 +1703,69 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
         return (DateTime.UtcNow - lastHeavyUiTextScanUtc).TotalMilliseconds >= Settings.PreOpenUiFullRescanIntervalMs.Value;
     }
 
+    private static bool TryGetExpeditionStateSocketCount(Entity? entity, out int socketCount)
+    {
+        socketCount = 0;
+
+        try
+        {
+            var states = entity?.GetComponent<StateMachine>()?.States;
+            if (states == null)
+                return false;
+
+            foreach (var state in states)
+            {
+                if (!string.Equals(state.Name, "sockets", StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                var value = Convert.ToInt32(state.Value, CultureInfo.InvariantCulture);
+                if (value <= 0 || value > 20)
+                    return false;
+
+                socketCount = value;
+                return true;
+            }
+        }
+        catch
+        {
+        }
+
+        return false;
+    }
+
+
+    private static bool IsExpeditionEncounterActivated(Entity? entity)
+    {
+        try
+        {
+            var states = entity?.GetComponent<StateMachine>()?.States;
+            if (states == null)
+                return false;
+
+            foreach (var state in states)
+            {
+                if (!string.Equals(state.Name, "activated", StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                var value = Convert.ToInt32(state.Value, CultureInfo.InvariantCulture);
+                return value >= 6;
+            }
+        }
+        catch
+        {
+        }
+
+        return false;
+    }
+
+    private static bool IsExpedition2Encounter(Entity? entity)
+    {
+        return entity?.Metadata?.StartsWith("Metadata/MiscellaneousObjects/Expedition2/Expedition2Encounter", StringComparison.Ordinal) == true;
+    }
+
     private void UpdateExpeditionModeCache()
     {
-        if ((!Settings.EnableExpeditionMode.Value && !Settings.EnableExpeditionModeTooltip.Value) || !Settings.EnablePriceApi.Value)
+        if (!Settings.EnableExpeditionMode.Value && !Settings.EnableExpeditionModeTooltip.Value)
         {
             cachedExpeditionModeEntries.Clear();
             return;
@@ -1720,31 +1781,36 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
 
         try
         {
-            var hasEncounterEntity = GameController.EntityListWrapper.Entities.Any(x =>
-                x.Metadata.StartsWith("Metadata/MiscellaneousObjects/Expedition2/Expedition2Encounter", StringComparison.Ordinal));
+            var encounterEntities = GameController.EntityListWrapper.Entities
+                .Where(IsExpedition2Encounter)
+                .ToList();
 
-            if (!hasEncounterEntity)
+            if (encounterEntities.Count == 0)
                 return;
 
             var labels = GameController.IngameState.IngameUi.ItemsOnGroundLabelsVisible
-                .Where(x => x?.ItemOnGround?.Metadata?.StartsWith("Metadata/MiscellaneousObjects/Expedition2/Expedition2Encounter", StringComparison.Ordinal) == true)
+                .Where(x => IsExpedition2Encounter(x?.ItemOnGround))
                 .Select(x => (GroundLabel: x, EncounterLabel: x.Label.AsObject<Expedition2EncounterLabel>()))
                 .Where(x => x.EncounterLabel != null)
                 .ToList();
-
-            if (labels.Count == 0)
-                return;
 
             var areaLevel = GameController.IngameState.Data.CurrentAreaLevel;
             var allRecipes = GameController.Files.Expedition2Recipes.EntriesList.ToLookup(x => x.RuneCountRequired);
             var runeWeights = GameController.Files.Expedition2RunesWeights.EntriesList;
             var index = 1;
+            var handledEntityIds = new HashSet<uint>();
 
             foreach (var (groundLabel, encounterLabel) in labels)
             {
                 var entity = groundLabel.ItemOnGround;
-                if (entity == null)
+                if (entity == null || IsExpeditionEncounterActivated(entity))
                     continue;
+
+                handledEntityIds.Add(entity.Id);
+
+                var stateRuneCount = TryGetExpeditionStateSocketCount(entity, out var socketsFromState)
+                    ? socketsFromState
+                    : encounterLabel.RuneCount;
 
                 var allowedRuneCounts = runeWeights
                     .Where(x => x.RuneSlot - 1 == encounterLabel.FixedRunePosition)
@@ -1753,23 +1819,22 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
                     .Select(x => x.SlotCount)
                     .ToHashSet();
 
-                var rewards = allRecipes
-                    .Where(x => x.Key <= encounterLabel.RuneCount)
-                    .SelectMany(x => x)
-                    .Where(x => allowedRuneCounts.Contains(x.RuneCountRequired))
-                    .Where(x => x.MinLevelReq <= areaLevel && x.MaxLevelReq >= areaLevel)
-                    .Where(x => x.Runes.ElementAtOrDefault(encounterLabel.FixedRunePosition)?.Equals(encounterLabel.FixedRune) == true)
-                    .Select(ToPreOpenEntry)
-                    .Where(x => x != null)
-                    .Select(x => x!)
-                    .Where(x => Settings.ExpeditionModeShowZeroPriceRewards.Value || x.Value > 0)
-                    .Where(x => Settings.ExpeditionModeMinimumValue.Value <= 0 || x.Value >= Settings.ExpeditionModeMinimumValue.Value)
-                    .OrderByDescending(x => x.Value)
-                    .Take(Math.Max(1, Settings.ExpeditionModeMaxRewardsPerEncounter.Value))
-                    .ToList();
-
-                if (rewards.Count == 0)
-                    continue;
+                var rewards = Settings.EnablePriceApi.Value
+                    ? allRecipes
+                        .Where(x => x.Key <= stateRuneCount)
+                        .SelectMany(x => x)
+                        .Where(x => allowedRuneCounts.Contains(x.RuneCountRequired))
+                        .Where(x => x.MinLevelReq <= areaLevel && x.MaxLevelReq >= areaLevel)
+                        .Where(x => x.Runes.ElementAtOrDefault(encounterLabel.FixedRunePosition)?.Equals(encounterLabel.FixedRune) == true)
+                        .Select(ToPreOpenEntry)
+                        .Where(x => x != null)
+                        .Select(x => x!)
+                        .Where(x => Settings.ExpeditionModeShowZeroPriceRewards.Value || x.Value > 0)
+                        .Where(x => Settings.ExpeditionModeMinimumValue.Value <= 0 || x.Value >= Settings.ExpeditionModeMinimumValue.Value)
+                        .OrderByDescending(x => x.Value)
+                        .Take(Math.Max(1, Settings.ExpeditionModeMaxRewardsPerEncounter.Value))
+                        .ToList()
+                    : new List<PreOpenPreviewEntry>();
 
                 var rect = encounterLabel.GetClientRect();
                 var rawScreenPos = rect.BottomLeft;
@@ -1785,16 +1850,36 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
                     LabelSource = encounterLabel,
                     ScreenPosition = rawScreenPos,
                     GridPosition = grid,
-                    RuneCount = encounterLabel.RuneCount,
+                    RuneCount = stateRuneCount,
                     FixedRune = Convert.ToString(encounterLabel.FixedRune) ?? string.Empty,
                     Rewards = rewards
                 });
             }
 
+            foreach (var entity in encounterEntities)
+            {
+                if (handledEntityIds.Contains(entity.Id) || IsExpeditionEncounterActivated(entity))
+                    continue;
+
+                if (!TryGetExpeditionStateSocketCount(entity, out var socketsFromState))
+                    continue;
+
+                var grid = new Vector2(entity.GridPos.X, entity.GridPos.Y);
+
+                cachedExpeditionModeEntries.Add(new ExpeditionModeEncounterEntry
+                {
+                    Index = index++,
+                    LabelSource = null,
+                    ScreenPosition = Vector2.Zero,
+                    GridPosition = grid,
+                    RuneCount = socketsFromState,
+                    FixedRune = string.Empty,
+                    Rewards = new List<PreOpenPreviewEntry>()
+                });
+            }
         }
         catch
         {
-            
         }
     }
 
@@ -1825,9 +1910,6 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
             else
                 rewards = rewards.Take(Math.Max(1, Settings.ExpeditionModeMaxRewardsPerEncounter.Value)).ToList();
 
-            if (rewards.Count == 0)
-                continue;
-
             var hasCurrentPosition = TryGetCurrentVisibleEncounterBottomLeft(entry.LabelSource, out var pos);
             var useFallback = Settings.ExpeditionModeTooltipFallbackList.Value;
 
@@ -1851,7 +1933,7 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
             if (useFallback)
             {
                 var headerSize = Graphics.DrawTextWithBackground(
-                    $"Expedition #{entry.Index}  RuneCount {entry.RuneCount}",
+                    $"Expedition #{entry.Index}  Rune {entry.RuneCount} sockets",
                     new Vector2(pos.X, y),
                     Settings.ExpeditionModeHeaderColor,
                     bg);
@@ -1859,14 +1941,27 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
                 y += Math.Max(14, headerSize.Y);
             }
 
-            for (var i = 0; i < rewards.Count; i++)
+            if (rewards.Count == 0)
             {
-                var reward = rewards[i];
-                var prefix = i == 0 ? "#1 " : i == 1 ? "#2 " : string.Empty;
-                var color = i == 0 ? Settings.TopPickColor : i == 1 ? Settings.SecondPickColor : Settings.FrameColor;
-                var text = $"{prefix}{FormatRewardValue(reward.Value)}  {reward.Name}";
-                var size = Graphics.DrawTextWithBackground(text, new Vector2(pos.X, y), color, bg);
-                y += Math.Max(14, size.Y);
+                var waitingSize = Graphics.DrawTextWithBackground(
+                    "Waiting for expedition reward UI",
+                    new Vector2(pos.X, y),
+                    Color.Lime,
+                    bg);
+
+                y += Math.Max(14, waitingSize.Y);
+            }
+            else
+            {
+                for (var i = 0; i < rewards.Count; i++)
+                {
+                    var reward = rewards[i];
+                    var prefix = i == 0 ? "#1 " : i == 1 ? "#2 " : string.Empty;
+                    var color = i == 0 ? Settings.TopPickColor : i == 1 ? Settings.SecondPickColor : Settings.FrameColor;
+                    var text = $"{prefix}{FormatRewardValue(reward.Value)}  {reward.Name}";
+                    var size = Graphics.DrawTextWithBackground(text, new Vector2(pos.X, y), color, bg);
+                    y += Math.Max(14, size.Y);
+                }
             }
 
             if (useFallback)
