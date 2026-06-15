@@ -1167,6 +1167,7 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
         text = Regex.Replace(text, @"^\s*\d+\s*x\s+", "", RegexOptions.IgnoreCase).Trim();
         text = Regex.Replace(text, @"^(Skill|Support):\s*", "", RegexOptions.IgnoreCase).Trim();
         text = Regex.Replace(text, @"\[Rarity\|Unique\]", "Unique", RegexOptions.IgnoreCase).Trim();
+        text = Regex.Replace(text, @"\s+\(Level\s+\d+\)$", "", RegexOptions.IgnoreCase).Trim();
         return Regex.Replace(text.ToLowerInvariant(), @"[^a-z0-9]+", "");
     }
 
@@ -2917,52 +2918,77 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
             return;
 
         name = CleanupText(name);
-        output[name] = value;
 
-        var normalized = NormalizePriceKey(name);
-        if (!string.IsNullOrWhiteSpace(normalized))
-            output[normalized] = value;
-
-        var isGreaterOrPerfectOrb =
-            name.EndsWith(" Orb", StringComparison.OrdinalIgnoreCase) &&
-            (name.StartsWith("Greater ", StringComparison.OrdinalIgnoreCase) ||
-             name.StartsWith("Perfect ", StringComparison.OrdinalIgnoreCase));
-
-        
-        
-        if (!isGreaterOrPerfectOrb && name.Contains(" Rune", StringComparison.OrdinalIgnoreCase))
+        void Add(string? alias)
         {
-            var noGreater = name.Replace("Greater ", "", StringComparison.OrdinalIgnoreCase).Trim();
-            var noLesser = name.Replace("Lesser ", "", StringComparison.OrdinalIgnoreCase).Trim();
-            output[noGreater] = value;
-            output[noLesser] = value;
-            output[noGreater.Replace(" Rune of ", " Rune ", StringComparison.OrdinalIgnoreCase)] = value;
-            output[noGreater.Replace(" Rune", "", StringComparison.OrdinalIgnoreCase)] = value;
+            alias = CleanupText(alias ?? string.Empty).Trim();
+            if (string.IsNullOrWhiteSpace(alias))
+                return;
+
+            output[alias] = value;
         }
+
+        Add(name);
+        Add(NormalizePriceKey(name));
+        Add(name.Replace(" ", "-").ToLowerInvariant());
+        Add(name.Replace(" ", "_").ToLowerInvariant());
+        AddLevelSpecificPriceAliases(name, Add);
+        AddRuneSpellingAliases(name, Add);
 
         var pretty = name.Replace("-", " ").Replace("_", " ").Trim();
         if (!string.Equals(pretty, name, StringComparison.OrdinalIgnoreCase))
-            output[pretty] = value;
-        
-        
+            Add(pretty);
+
         if (name.EndsWith(" Alloy", StringComparison.OrdinalIgnoreCase))
         {
-            
-            output[name.Replace(" ", "-").ToLowerInvariant()] = value;
-            output[name.Replace(" ", "_").ToLowerInvariant()] = value;
-            output[name.Replace(" ", "").ToLowerInvariant()] = value;
-            output[name.Replace(" Alloy", "", StringComparison.OrdinalIgnoreCase).Trim()] = value;
-            output[name.Replace(" Alloy", "", StringComparison.OrdinalIgnoreCase).Trim().ToLowerInvariant()] = value;
+            Add(name.Replace(" ", "-").ToLowerInvariant());
+            Add(name.Replace(" ", "_").ToLowerInvariant());
+            Add(name.Replace(" ", "").ToLowerInvariant());
+            Add(name.Replace(" Alloy", "", StringComparison.OrdinalIgnoreCase).Trim());
+            Add(name.Replace(" Alloy", "", StringComparison.OrdinalIgnoreCase).Trim().ToLowerInvariant());
         }
+    }
 
+    private static void AddLevelSpecificPriceAliases(string name, Action<string?> add)
+    {
+        var match = Regex.Match(name, @"^\s*(.+?)\s+\(Level\s+(\d+)\)\s*$", RegexOptions.IgnoreCase);
+        if (!match.Success)
+            return;
 
+        var baseName = CleanupText(match.Groups[1].Value);
+        var level = match.Groups[2].Value;
+        if (string.IsNullOrWhiteSpace(baseName) || string.IsNullOrWhiteSpace(level))
+            return;
+
+        add($"{baseName} Level {level}");
+        add($"{baseName} level {level}");
+        add($"{baseName.ToLowerInvariant().Replace(" ", "-")}-level-{level}");
+        add($"{baseName.ToLowerInvariant().Replace(" ", "_")}_level_{level}");
+        add($"{baseName.ToLowerInvariant().Replace(" ", "")}level{level}");
+    }
+
+    private static void AddRuneSpellingAliases(string name, Action<string?> add)
+    {
+        if (!Regex.IsMatch(name, @"\bRunes?\b", RegexOptions.IgnoreCase))
+            return;
+
+        // Keep Lesser/Greater/Perfect/Ancient and other rune tiers intact.
+        // The previous code stripped these words and overwrote prices such as
+        // Robust Rune with Lesser Robust Rune or Greater Robust Rune prices.
+        var runeOfVariant = Regex.Replace(name, @"\bRune\s+of\s+", "Rune ", RegexOptions.IgnoreCase).Trim();
+        if (!string.Equals(runeOfVariant, name, StringComparison.OrdinalIgnoreCase))
+        {
+            add(runeOfVariant);
+            add(runeOfVariant.Replace(" ", "-").ToLowerInvariant());
+            add(runeOfVariant.Replace(" ", "_").ToLowerInvariant());
+        }
     }
 
     private static string NormalizePriceKey(string name)
     {
         name = CleanupText(name);
-        name = System.Text.RegularExpressions.Regex.Replace(name, @"^\d+\s*x\s+", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-        name = System.Text.RegularExpressions.Regex.Replace(name, @"\s+\(Level\s+\d+\)$", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        name = Regex.Replace(name, @"^\s*\d+\s*x\s+", "", RegexOptions.IgnoreCase).Trim();
+        name = Regex.Replace(name, @"^(Skill|Support):\s*", "", RegexOptions.IgnoreCase).Trim();
         return name.Trim();
     }
 
@@ -3084,37 +3110,24 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
 
         Add(name);
         Add(NormalizePriceKey(name));
+        AddLevelSpecificPriceAliases(name, Add);
 
+        var isRune = Regex.IsMatch(name, @"\bRunes?\b", RegexOptions.IgnoreCase);
+        var isLevelSpecificUncutGem = Regex.IsMatch(name, @"\bUncut\s+(Skill|Spirit|Support)\s+Gem\s+\(Level\s+\d+\)", RegexOptions.IgnoreCase);
         var isGreaterOrPerfectOrb =
             name.EndsWith(" Orb", StringComparison.OrdinalIgnoreCase) &&
             (name.StartsWith("Greater ", StringComparison.OrdinalIgnoreCase) ||
              name.StartsWith("Perfect ", StringComparison.OrdinalIgnoreCase));
 
-        
-        
-        
-        if (!isGreaterOrPerfectOrb)
+        if (!isRune && !isLevelSpecificUncutGem && !isGreaterOrPerfectOrb)
         {
-            var withoutGreater = name.Replace("Greater ", "", StringComparison.OrdinalIgnoreCase).Trim();
-            var withoutLesser = name.Replace("Lesser ", "", StringComparison.OrdinalIgnoreCase).Trim();
-            var withoutPerfect = name.Replace("Perfect ", "", StringComparison.OrdinalIgnoreCase).Trim();
-
-            Add(withoutGreater);
-            Add(withoutLesser);
-            Add(withoutPerfect);
-
-            if (name.Contains(" Rune", StringComparison.OrdinalIgnoreCase))
-            {
-                if (name.Contains("Rune of Hollowing", StringComparison.OrdinalIgnoreCase))
-                    Add(name.Replace("Rune of Hollowing", "Rune Hollowing", StringComparison.OrdinalIgnoreCase));
-                Add(withoutGreater);
-                Add(withoutLesser);
-                Add(withoutGreater.Replace(" Rune of ", " Rune ", StringComparison.OrdinalIgnoreCase));
-                Add(withoutGreater.Replace(" Rune", "", StringComparison.OrdinalIgnoreCase));
-                Add(name.Replace(" Rune of ", " Rune ", StringComparison.OrdinalIgnoreCase));
-                Add(name.Replace(" Rune", "", StringComparison.OrdinalIgnoreCase));
-            }
+            Add(name.Replace("Greater ", "", StringComparison.OrdinalIgnoreCase).Trim());
+            Add(name.Replace("Lesser ", "", StringComparison.OrdinalIgnoreCase).Trim());
+            Add(name.Replace("Perfect ", "", StringComparison.OrdinalIgnoreCase).Trim());
         }
+
+        if (isRune)
+            AddRuneSpellingAliases(name, Add);
 
         if (name.Contains("Orb of Transmutation", StringComparison.OrdinalIgnoreCase) ||
             name.Contains("Orb of Augmentation", StringComparison.OrdinalIgnoreCase))
@@ -3124,12 +3137,11 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
             Add(name.Replace("Perfect Orb of ", "Perfect Orb ", StringComparison.OrdinalIgnoreCase));
         }
 
-        
         Add(name.Replace(" ", "-").ToLowerInvariant());
         Add(name.Replace(" ", "_").ToLowerInvariant());
+
         if (name.EndsWith(" Alloy", StringComparison.OrdinalIgnoreCase))
         {
-            
             Add(name.Replace(" Alloy", "", StringComparison.OrdinalIgnoreCase).Trim());
             Add(name.Replace(" ", "").ToLowerInvariant());
             Add(name.Replace(" ", "-").ToLowerInvariant());
@@ -3137,8 +3149,6 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
             Add(name.ToLowerInvariant());
             Add(name.Replace(" ", " ").Trim());
         }
-
-
 
         foreach (var item in yieldBuffer)
             yield return item;
@@ -3168,7 +3178,6 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
         name = CleanupText(name);
         name = Regex.Replace(name, @"^\s*\d+\s*x\s+", "", RegexOptions.IgnoreCase).Trim();
         name = Regex.Replace(name, @"\[Rarity\|Unique\]", "Unique", RegexOptions.IgnoreCase).Trim();
-        name = System.Text.RegularExpressions.Regex.Replace(name, @"\s+\(Level\s+\d+\)$", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
         return name.Trim();
     }
 
@@ -3394,6 +3403,33 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
         return DateTime.UtcNow - lastPriceRefreshUtc;
     }
 
+    private Dictionary<string, double>? RebuildRawPricesFromSnapshotJson(PoeNinjaPriceSnapshot snapshot)
+    {
+        if (snapshot.RawJsonByCategory == null || snapshot.RawJsonByCategory.Count == 0)
+            return null;
+
+        var rebuilt = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var pair in snapshot.RawJsonByCategory)
+        {
+            if (string.IsNullOrWhiteSpace(pair.Value))
+                continue;
+
+            try
+            {
+                if (pair.Key.StartsWith("exchange:", StringComparison.OrdinalIgnoreCase))
+                    ParseExchangeOverview(pair.Value, rebuilt);
+                else if (pair.Key.StartsWith("stash:", StringComparison.OrdinalIgnoreCase))
+                    ParseStashOverview(pair.Value, rebuilt);
+            }
+            catch
+            {
+            }
+        }
+
+        return rebuilt.Count > 0 ? rebuilt : null;
+    }
+
     private string GetPriceCachePath()
     {
         var league = GetLeagueNameManualOrFallback();
@@ -3430,13 +3466,18 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
                 return;
 
             var loaded = JsonSerializer.Deserialize<PoeNinjaPriceSnapshot>(System.IO.File.ReadAllText(path));
-            if (loaded?.Prices == null || loaded.Prices.Count == 0)
+            if (loaded == null)
+                return;
+
+            var rebuiltFromJson = RebuildRawPricesFromSnapshotJson(loaded);
+            var pricesToLoad = rebuiltFromJson ?? loaded.Prices;
+            if (pricesToLoad == null || pricesToLoad.Count == 0)
                 return;
 
             lock (priceLock)
             {
                 rawPriceCache.Clear();
-                foreach (var kv in loaded.Prices)
+                foreach (var kv in pricesToLoad)
                     rawPriceCache[kv.Key] = kv.Value;
             }
 
@@ -3445,7 +3486,13 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
             exaltedOrbRawValue = loaded.ExaltedOrbRawValue;
             divineOrbRawValue = loaded.DivineOrbRawValue;
             ApplyDisplayPriceModeFromRawCache();
-            priceStatus = $"loaded full JSON raw cache: {rawPriceCache.Count} prices / {loaded.RawJsonByCategory.Count} categories ({GetPriceDisplayUnitLabel()})";
+
+            var source = rebuiltFromJson != null ? "rebuilt JSON raw cache" : "legacy raw cache";
+            var categoryCount = loaded.RawJsonByCategory?.Count ?? 0;
+            if (rebuiltFromJson == null)
+                forcePriceRefreshRequested = true;
+
+            priceStatus = $"loaded {source}: {rawPriceCache.Count} prices / {categoryCount} categories ({GetPriceDisplayUnitLabel()})";
         }
         catch
         {
@@ -4058,6 +4105,7 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
             || text.StartsWith("Support:", StringComparison.OrdinalIgnoreCase)
             || text.Contains("Uncut Support Gem", StringComparison.OrdinalIgnoreCase)
             || text.Contains("Uncut Skill Gem", StringComparison.OrdinalIgnoreCase)
+            || text.Contains("Uncut Spirit Gem", StringComparison.OrdinalIgnoreCase)
             || text.Contains("Unique", StringComparison.OrdinalIgnoreCase)
             || text.Contains("Rune", StringComparison.OrdinalIgnoreCase)
             || text.Contains("Orb", StringComparison.OrdinalIgnoreCase)
