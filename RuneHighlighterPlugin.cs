@@ -1804,13 +1804,13 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
             foreach (var (groundLabel, encounterLabel) in labels)
             {
                 var entity = groundLabel.ItemOnGround;
-                if (entity == null || IsExpeditionEncounterActivated(entity))
+                if (entity == null)
                     continue;
 
                 handledEntityIds.Add(entity.Id);
 
                 var stateRuneCount = TryGetExpeditionStateSocketCount(entity, out var socketsFromState)
-                    ? socketsFromState
+                    ? Math.Max(socketsFromState, encounterLabel.RuneCount)
                     : encounterLabel.RuneCount;
 
                 var allowedRuneCounts = runeWeights
@@ -2301,7 +2301,7 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
         var skippedNoRecipe = 0;
         var skippedFiltered = 0;
         var skippedRect = 0;
-        var skippedUndiscovered = 0;
+        var shownUndiscovered = 0;
         var skippedOutOfWindow = 0;
         var cacheHits = 0;
         var cacheMisses = 0;
@@ -2393,10 +2393,7 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
             }
 
             if (cached.IsUndiscovered)
-            {
-                skippedUndiscovered++;
-                continue;
-            }
+                shownUndiscovered++;
 
             if (!cached.IsValidHighlight)
                 continue;
@@ -2410,8 +2407,8 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
         PruneDirectOptionCache(now);
 
         status = visibleRewards.Count > 0
-            ? $"ok-direct-options-cached options={optionCount} cacheHit={cacheHits} cacheMiss={cacheMisses} filtered={skippedFiltered} noRecipe={skippedNoRecipe} badRect={skippedRect} undiscovered={skippedUndiscovered} outOfWindow={skippedOutOfWindow}"
-            : $"direct options found no highlightable rewards options={optionCount} cacheHit={cacheHits} cacheMiss={cacheMisses} filtered={skippedFiltered} noRecipe={skippedNoRecipe} badRect={skippedRect} undiscovered={skippedUndiscovered} outOfWindow={skippedOutOfWindow}";
+            ? $"ok-direct-options-cached options={optionCount} cacheHit={cacheHits} cacheMiss={cacheMisses} filtered={skippedFiltered} noRecipe={skippedNoRecipe} badRect={skippedRect} undiscoveredShown={shownUndiscovered} outOfWindow={skippedOutOfWindow}"
+            : $"direct options found no highlightable rewards options={optionCount} cacheHit={cacheHits} cacheMiss={cacheMisses} filtered={skippedFiltered} noRecipe={skippedNoRecipe} badRect={skippedRect} undiscoveredShown={shownUndiscovered} outOfWindow={skippedOutOfWindow}";
     }
 
 
@@ -2457,7 +2454,7 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
         }
 
         result.IsUndiscovered = IsUndiscoveredOption(option);
-        result.IsValidHighlight = !result.HasBadRect && !result.IsUndiscovered;
+        result.IsValidHighlight = !result.HasBadRect;
         result.Reward = new VisibleReward(
             rect,
             entry.Name,
@@ -2473,7 +2470,7 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
         entry.Rect = rect;
         entry.HasBadRect = !IsGoodRect(rect);
 
-        if (!entry.HasNoRecipe && !entry.IsFiltered && !entry.IsUndiscovered && entry.Reward.Text.Length > 0)
+        if (!entry.HasNoRecipe && !entry.IsFiltered && entry.Reward.Text.Length > 0)
         {
             entry.Reward = entry.Reward with { Rect = rect };
             entry.IsValidHighlight = !entry.HasBadRect;
