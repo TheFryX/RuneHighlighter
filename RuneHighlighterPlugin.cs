@@ -61,7 +61,8 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
     private int lastDirectOptionCount = -1;
     private int consecutiveEmptyRewardScans;
     private const int VisibleRewardStickyMs = 350;
-    private const int MaxDirectOptionsForLiveScan = 40;
+    private const int MaxDirectOptionsForLiveScan = 256;
+    private const int DirectOptionNoRewardRetryMs = 1000;
 
     private sealed class DirectOptionCacheEntry
     {
@@ -76,12 +77,24 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
         public VisibleReward Reward { get; set; }
         public string DedupKey { get; set; } = string.Empty;
         public DateTime LastSeenUtc { get; set; }
+        public DateTime LastResolveAttemptUtc { get; set; }
     }
 
     private static readonly HttpClient priceHttpClient = new();
     private static readonly object ReflectionCacheMiss = new();
     private static readonly ConcurrentDictionary<(Type Type, string Name), object> ReflectionMemberCache = new();
     private static readonly ConcurrentDictionary<(Type Type, string Name), object> ReflectionMethodCache = new();
+    private static readonly string[] RewardTextMemberNames =
+    {
+        "Description",
+        "RewardName",
+        "DisplayName",
+        "BaseName",
+        "Name",
+        "TextNoTags",
+        "Text",
+        "Label"
+    };
 
     private sealed class SpikeProfiler
     {
@@ -432,8 +445,9 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
                 {
                     foreach (var reward in visibleRewards)
                     {
-                        var isTopPick = Settings.HighlightMostValuableReward.Value && reward.TotalValue > 0 && Math.Abs(reward.TotalValue - topValue) < 0.001;
-                        var isSecondPick = Settings.HighlightMostValuableReward.Value && reward.TotalValue > 0 && !isTopPick && Math.Abs(reward.TotalValue - secondValue) < 0.001;
+                        var shouldRankTopPicks = Settings.HighlightMostValuableReward.Value || Settings.HighlightOnlyTopTwoPicks.Value;
+                        var isTopPick = shouldRankTopPicks && reward.TotalValue > 0 && Math.Abs(reward.TotalValue - topValue) < 0.001;
+                        var isSecondPick = shouldRankTopPicks && reward.TotalValue > 0 && !isTopPick && Math.Abs(reward.TotalValue - secondValue) < 0.001;
 
                         if (Settings.HighlightOnlyTopTwoPicks.Value && !isTopPick && !isSecondPick)
                             continue;
@@ -2230,7 +2244,11 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
         scannedRows = 0;
         mode = "";
 
-        if (!Settings.HighlightAllVisibleRewards.Value && enabledItemNames.Count == 0)
+        var wantsPriceBasedUiScan = Settings.HighlightMostValuableReward.Value ||
+                                Settings.HighlightOnlyTopTwoPicks.Value ||
+                                Settings.HighlightOnlyRewardsAboveValue.Value;
+
+        if (!Settings.HighlightAllVisibleRewards.Value && enabledItemNames.Count == 0 && !wantsPriceBasedUiScan)
         {
             status = "no selected rewards";
             return;
@@ -2353,17 +2371,25 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
 
             var rect = GetRect(option);
 
-            if (!directOptionCache.TryGetValue(optionId, out var cached))
+            var shouldRebuildCache = !directOptionCache.TryGetValue(optionId, out var cached);
+            if (!shouldRebuildCache && cached!.HasNoRecipe &&
+                (now - cached.LastResolveAttemptUtc).TotalMilliseconds >= DirectOptionNoRewardRetryMs)
+            {
+                shouldRebuildCache = true;
+            }
+
+            if (shouldRebuildCache)
             {
                 cacheMisses++;
                 var recipeObj = SafeGet(option, "Recipe");
                 cached = BuildDirectOptionCacheEntry(optionId, rect, recipeObj, option);
+                cached.LastResolveAttemptUtc = now;
                 directOptionCache[optionId] = cached;
             }
             else
             {
                 cacheHits++;
-                UpdateDirectOptionCacheEntryRect(cached, rect);
+                UpdateDirectOptionCacheEntryRect(cached!, rect);
             }
 
             cached.LastSeenUtc = now;
@@ -2434,18 +2460,14 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
             RecipeId = 0,
             Rect = rect,
             HasBadRect = !IsGoodRect(rect),
-            HasNoRecipe = recipeObj is not Expedition2Recipe
+            HasNoRecipe = true
         };
 
-        if (result.HasNoRecipe || recipeObj is not Expedition2Recipe recipe)
+        var entry = TryBuildDirectOptionEntry(recipeObj, option);
+        if (entry == null || string.IsNullOrWhiteSpace(entry.Name))
             return result;
 
-        var entry = ToPreOpenEntry(recipe);
-        if (entry == null || string.IsNullOrWhiteSpace(entry.Name))
-        {
-            result.HasNoRecipe = true;
-            return result;
-        }
+        result.HasNoRecipe = false;
 
         if (!ShouldHighlightRecipeEntry(entry))
         {
@@ -2463,6 +2485,219 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
             entry.Value);
         result.DedupKey = $"{optionId}:{NormalizeLooseRewardKey(entry.Name)}";
         return result;
+    }
+
+    private PreOpenPreviewEntry? TryBuildDirectOptionEntry(object? recipeObj, object option)
+    {
+        if (recipeObj is Expedition2Recipe recipe)
+            return ToPreOpenEntry(recipe);
+
+        var recipeLikeEntry = TryBuildEntryFromRecipeLikeObject(recipeObj);
+        if (recipeLikeEntry != null)
+            return recipeLikeEntry;
+
+        if (TryGetOptionRewardText(option, out var rewardText))
+            return BuildEntryFromRewardText(rewardText);
+
+        return null;
+    }
+
+    private PreOpenPreviewEntry? TryBuildEntryFromRecipeLikeObject(object? recipeObj)
+    {
+        if (recipeObj == null)
+            return null;
+
+        var rawName = ReadRewardNameFromObject(recipeObj);
+        if (string.IsNullOrWhiteSpace(rawName))
+            rawName = ReadRewardNameFromObject(SafeGet(recipeObj, "Reward"));
+
+        if (string.IsNullOrWhiteSpace(rawName))
+            return null;
+
+        var count = GetRewardCountFromObject(recipeObj);
+        var name = GetDumpBasedDisplayName(rawName, count);
+        if (string.IsNullOrWhiteSpace(name))
+            return null;
+
+        var unitPrice = 0d;
+        if (Settings.EnablePriceApi.Value &&
+            !TryGetDisplayPriceForName(name, out unitPrice) &&
+            !TryGetDisplayPriceForName(rawName, out unitPrice))
+        {
+            unitPrice = 0;
+        }
+
+        return new PreOpenPreviewEntry
+        {
+            Name = name,
+            Count = Math.Max(1, count),
+            Value = unitPrice * Math.Max(1, count)
+        };
+    }
+
+    private PreOpenPreviewEntry? BuildEntryFromRewardText(string rewardText)
+    {
+        var displayName = NormalizeRecipeDisplayName(rewardText, 1);
+        if (string.IsNullOrWhiteSpace(displayName))
+            return null;
+
+        var (stack, lookupName) = SplitRewardStack(displayName);
+        var unitPrice = 0d;
+        if (Settings.EnablePriceApi.Value &&
+            !TryGetDisplayPriceForName(lookupName, out unitPrice) &&
+            !TryGetDisplayPriceForName(displayName, out unitPrice))
+        {
+            unitPrice = 0;
+        }
+
+        return new PreOpenPreviewEntry
+        {
+            Name = displayName,
+            Count = Math.Max(1, stack),
+            Value = unitPrice * Math.Max(1, stack)
+        };
+    }
+
+    private bool TryGetOptionRewardText(object option, out string rewardText)
+    {
+        rewardText = string.Empty;
+
+        if (TryReadRewardTextFromObject(option, out rewardText))
+            return true;
+
+        var rewardObj = SafeGet(option, "Reward");
+        if (TryReadRewardTextFromObject(rewardObj, out rewardText))
+            return true;
+
+        var tooltipObj = SafeGet(option, "Tooltip");
+        if (TryReadRewardTextFromObject(tooltipObj, out rewardText))
+            return true;
+
+        foreach (var child in GetChildren(option))
+        {
+            if (TryReadRewardTextFromObject(child, out rewardText))
+                return true;
+
+            var childTooltip = SafeGet(child, "Tooltip");
+            if (TryReadRewardTextFromObject(childTooltip, out rewardText))
+                return true;
+        }
+
+        foreach (var child in GetChildren(option))
+        {
+            foreach (var grandChild in GetChildren(child))
+            {
+                if (TryReadRewardTextFromObject(grandChild, out rewardText))
+                    return true;
+            }
+        }
+
+        return false;
+    }
+
+    private bool TryReadRewardTextFromObject(object? obj, out string rewardText)
+    {
+        rewardText = string.Empty;
+        if (obj == null)
+            return false;
+
+        foreach (var memberName in RewardTextMemberNames)
+        {
+            var value = SafeGet(obj, memberName);
+            if (value is string text && TryAcceptOptionRewardText(text, out rewardText))
+                return true;
+        }
+
+        var rewardObj = SafeGet(obj, "Reward");
+        if (rewardObj != null && !ReferenceEquals(rewardObj, obj))
+        {
+            foreach (var memberName in RewardTextMemberNames)
+            {
+                var value = SafeGet(rewardObj, memberName);
+                if (value is string text && TryAcceptOptionRewardText(text, out rewardText))
+                    return true;
+            }
+        }
+
+        return false;
+    }
+
+    private bool TryAcceptOptionRewardText(string rawText, out string rewardText)
+    {
+        rewardText = CleanupText(rawText);
+        if (string.IsNullOrWhiteSpace(rewardText) || rewardText.Length > 160)
+            return false;
+
+        if (rewardText.Equals("Undiscovered", StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        if (rewardText.Contains("Metadata/", StringComparison.OrdinalIgnoreCase) ||
+            rewardText.Contains("Art/Textures", StringComparison.OrdinalIgnoreCase) ||
+            rewardText.Contains("Expedition2Window", StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        if (LooksLikeRewardText(rewardText) || IsEnabledRewardText(rewardText) || IsEnabledAlloyRewardText(rewardText))
+        {
+            rewardText = NormalizeRecipeDisplayName(rewardText, 1);
+            return !string.IsNullOrWhiteSpace(rewardText);
+        }
+
+        var (stack, lookupName) = SplitRewardStack(rewardText);
+        if (stack > 0 && Settings.EnablePriceApi.Value && TryGetDisplayPriceForName(lookupName, out var price) && price > 0)
+        {
+            rewardText = NormalizeRecipeDisplayName(rewardText, 1);
+            return !string.IsNullOrWhiteSpace(rewardText);
+        }
+
+        return false;
+    }
+
+    private static string? ReadRewardNameFromObject(object? obj)
+    {
+        if (obj == null)
+            return null;
+
+        foreach (var memberName in RewardTextMemberNames)
+        {
+            var value = SafeGet(obj, memberName);
+            if (value is string text)
+            {
+                text = CleanupText(text);
+                if (!string.IsNullOrWhiteSpace(text) &&
+                    !text.Contains("Metadata/", StringComparison.OrdinalIgnoreCase) &&
+                    !text.Contains("Art/Textures", StringComparison.OrdinalIgnoreCase))
+                {
+                    return text;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private static int GetRewardCountFromObject(object? obj)
+    {
+        if (obj == null)
+            return 1;
+
+        foreach (var memberName in new[] { "RewardCount", "StackSize", "Stack", "Count", "Amount", "Quantity" })
+        {
+            var value = SafeGet(obj, memberName);
+            if (value == null)
+                continue;
+
+            try
+            {
+                var count = Convert.ToInt32(value, CultureInfo.InvariantCulture);
+                if (count > 0)
+                    return count;
+            }
+            catch
+            {
+            }
+        }
+
+        return 1;
     }
 
     private static void UpdateDirectOptionCacheEntryRect(DirectOptionCacheEntry entry, ExileCore2.Shared.RectangleF rect)
@@ -4109,7 +4344,14 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
             || text.Contains("Flux", StringComparison.OrdinalIgnoreCase)
             || text.Contains("Whetstone", StringComparison.OrdinalIgnoreCase)
             || text.Contains("Scrap", StringComparison.OrdinalIgnoreCase)
-            || text.Contains("Etcher", StringComparison.OrdinalIgnoreCase);
+            || text.Contains("Etcher", StringComparison.OrdinalIgnoreCase)
+            || text.Contains("Prism", StringComparison.OrdinalIgnoreCase)
+            || text.Contains("Bauble", StringComparison.OrdinalIgnoreCase)
+            || text.Contains("Shard", StringComparison.OrdinalIgnoreCase)
+            || text.Contains("Essence", StringComparison.OrdinalIgnoreCase)
+            || text.Contains("Catalyst", StringComparison.OrdinalIgnoreCase)
+            || text.Contains("Tablet", StringComparison.OrdinalIgnoreCase)
+            || text.Contains("Currency", StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool IsActuallyVisible(object? element)
