@@ -61,8 +61,9 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
     private int lastDirectOptionCount = -1;
     private int consecutiveEmptyRewardScans;
     private const int VisibleRewardStickyMs = 350;
-    private const int MaxDirectOptionsForLiveScan = 256;
-    private const int DirectOptionNoRewardRetryMs = 1000;
+    private const int MaxDirectOptionsForLiveScan = 4096;
+    private const int DirectOptionNoRewardRetryMs = 750;
+    private const int MaxReasonableExpeditionRuneSockets = 512;
 
     private sealed class DirectOptionCacheEntry
     {
@@ -1472,7 +1473,7 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
                 if (!IsDrawableScreenPosition(rawBottomLeft))
                     continue;
 
-                var rawEntries = GetOrBuildPreOpenPreviewEntries(encounterLabel, areaLevel, allRecipes, runeWeights, previewNow);
+                var rawEntries = GetOrBuildPreOpenPreviewEntries(encounterLabel, entity, areaLevel, allRecipes, runeWeights, previewNow);
                 if (rawEntries.Count == 0)
                     continue;
 
@@ -1545,35 +1546,118 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
             Settings.PreviewUseMinimumValueFilter.Value,
             Settings.PreviewMinimumValue.Value,
             Settings.MinimumValueToHighlight.Value,
-            Settings.PreviewMaxLines.Value);
+            Settings.PreviewMaxLines.Value,
+            lastPriceRefreshUtc.Ticks);
     }
 
-    private string BuildPreOpenRecipeCacheKey(Expedition2EncounterLabel encounterLabel, int areaLevel)
+    private string BuildPreOpenRecipeCacheKey(Expedition2EncounterLabel encounterLabel, Entity? entity, int areaLevel)
     {
         return string.Join("|",
             areaLevel,
             encounterLabel.FixedRunePosition,
             Convert.ToString(encounterLabel.FixedRune, CultureInfo.InvariantCulture) ?? string.Empty,
-            encounterLabel.RuneCount,
+            GetEffectiveEncounterRuneCount(encounterLabel, entity),
             GetPriceDisplayUnitKey(),
             rawPriceCache.Count,
-            priceCache.Count);
+            priceCache.Count,
+            lastPriceRefreshUtc.Ticks);
+    }
+
+    private int GetEffectiveEncounterRuneCount(Expedition2EncounterLabel encounterLabel, Entity? entity)
+    {
+        var labelRuneCount = Math.Max(0, encounterLabel.RuneCount);
+        if (TryGetExpeditionStateSocketCount(entity, out var stateRuneCount))
+            return Math.Max(labelRuneCount, stateRuneCount);
+
+        return labelRuneCount;
     }
 
     private List<PreOpenPreviewEntry> GetOrBuildPreOpenPreviewEntries(
         Expedition2EncounterLabel encounterLabel,
+        Entity? entity,
         int areaLevel,
         IReadOnlyList<Expedition2Recipe> allRecipes,
         IEnumerable<dynamic> runeWeights,
         DateTime now)
     {
-        var key = BuildPreOpenRecipeCacheKey(encounterLabel, areaLevel);
+        var key = BuildPreOpenRecipeCacheKey(encounterLabel, entity, areaLevel);
         if (preOpenRecipePreviewCache.TryGetValue(key, out var cached))
         {
             cached.LastUsedUtc = now;
             return cached.AllEntries;
         }
 
+        var effectiveRuneCount = GetEffectiveEncounterRuneCount(encounterLabel, entity);
+        var rawEntries = BuildBestPreOpenPreviewEntries(encounterLabel, effectiveRuneCount, areaLevel, allRecipes, runeWeights);
+
+        var cacheEntry = new PreOpenRecipePreviewCacheEntry
+        {
+            AllEntries = rawEntries,
+            LastUsedUtc = now
+        };
+        preOpenRecipePreviewCache[key] = cacheEntry;
+        return rawEntries;
+    }
+
+    private enum PreOpenRecipeMatchMode
+    {
+        StrictRunePosition,
+        AnyRunePosition,
+        NoRuneFilter
+    }
+
+    private List<PreOpenPreviewEntry> BuildBestPreOpenPreviewEntries(
+        Expedition2EncounterLabel encounterLabel,
+        int effectiveRuneCount,
+        int areaLevel,
+        IReadOnlyList<Expedition2Recipe> allRecipes,
+        IEnumerable<dynamic> runeWeights)
+    {
+        var allowedRuneCounts = BuildAllowedRuneCounts(encounterLabel, areaLevel, runeWeights);
+
+        var result = BuildPreOpenPreviewEntries(
+            encounterLabel,
+            effectiveRuneCount,
+            areaLevel,
+            allRecipes,
+            allowedRuneCounts,
+            useAllowedRuneCounts: allowedRuneCounts.Count > 0,
+            matchMode: PreOpenRecipeMatchMode.StrictRunePosition);
+
+        result = PreferBetterPreOpenFallback(
+            result,
+            BuildPreOpenPreviewEntries(encounterLabel, effectiveRuneCount, areaLevel, allRecipes, allowedRuneCounts, false, PreOpenRecipeMatchMode.StrictRunePosition));
+
+        result = PreferBetterPreOpenFallback(
+            result,
+            BuildPreOpenPreviewEntries(encounterLabel, effectiveRuneCount, areaLevel, allRecipes, allowedRuneCounts, false, PreOpenRecipeMatchMode.AnyRunePosition));
+
+        result = PreferBetterPreOpenFallback(
+            result,
+            BuildPreOpenPreviewEntries(encounterLabel, effectiveRuneCount, areaLevel, allRecipes, allowedRuneCounts, false, PreOpenRecipeMatchMode.NoRuneFilter));
+
+        result.Sort(static (a, b) => b.Value.CompareTo(a.Value));
+        return result;
+    }
+
+    private static List<PreOpenPreviewEntry> PreferBetterPreOpenFallback(List<PreOpenPreviewEntry> current, List<PreOpenPreviewEntry> fallback)
+    {
+        if (fallback.Count == 0)
+            return current;
+
+        if (current.Count == 0)
+            return fallback;
+
+        var currentHasPricedEntry = current.Any(x => x.Value > 0);
+        var fallbackHasPricedEntry = fallback.Any(x => x.Value > 0);
+        return !currentHasPricedEntry && fallbackHasPricedEntry ? fallback : current;
+    }
+
+    private HashSet<int> BuildAllowedRuneCounts(
+        Expedition2EncounterLabel encounterLabel,
+        int areaLevel,
+        IEnumerable<dynamic> runeWeights)
+    {
         var allowedRuneCounts = new HashSet<int>();
         foreach (var weight in runeWeights)
         {
@@ -1583,31 +1667,46 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
                     Equals(weight.Rune, encounterLabel.FixedRune) &&
                     weight.Level <= areaLevel)
                 {
-                    allowedRuneCounts.Add(weight.SlotCount);
+                    var slotCount = Convert.ToInt32(weight.SlotCount, CultureInfo.InvariantCulture);
+                    if (slotCount > 0 && slotCount <= MaxReasonableExpeditionRuneSockets)
+                        allowedRuneCounts.Add(slotCount);
                 }
             }
             catch
             {
-                
             }
         }
 
+        return allowedRuneCounts;
+    }
+
+    private List<PreOpenPreviewEntry> BuildPreOpenPreviewEntries(
+        Expedition2EncounterLabel encounterLabel,
+        int effectiveRuneCount,
+        int areaLevel,
+        IReadOnlyList<Expedition2Recipe> allRecipes,
+        HashSet<int> allowedRuneCounts,
+        bool useAllowedRuneCounts,
+        PreOpenRecipeMatchMode matchMode)
+    {
         var rawEntries = new List<PreOpenPreviewEntry>(64);
+        var maxRuneCount = Math.Max(0, effectiveRuneCount);
+
         foreach (var recipe in allRecipes)
         {
             if (recipe == null)
                 continue;
 
-            if (recipe.RuneCountRequired > encounterLabel.RuneCount)
+            if (maxRuneCount > 0 && recipe.RuneCountRequired > maxRuneCount)
                 continue;
 
-            if (!allowedRuneCounts.Contains(recipe.RuneCountRequired))
+            if (useAllowedRuneCounts && allowedRuneCounts.Count > 0 && !allowedRuneCounts.Contains(recipe.RuneCountRequired))
                 continue;
 
             if (recipe.MinLevelReq > areaLevel || recipe.MaxLevelReq < areaLevel)
                 continue;
 
-            if (recipe.Runes.ElementAtOrDefault(encounterLabel.FixedRunePosition)?.Equals(encounterLabel.FixedRune) != true)
+            if (!RecipeMatchesFixedRune(recipe, encounterLabel, matchMode))
                 continue;
 
             var entry = ToPreOpenEntry(recipe);
@@ -1615,15 +1714,37 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
                 rawEntries.Add(entry);
         }
 
-        rawEntries.Sort(static (a, b) => b.Value.CompareTo(a.Value));
-
-        var cacheEntry = new PreOpenRecipePreviewCacheEntry
-        {
-            AllEntries = rawEntries,
-            LastUsedUtc = now
-        };
-        preOpenRecipePreviewCache[key] = cacheEntry;
         return rawEntries;
+    }
+
+    private static bool RecipeMatchesFixedRune(Expedition2Recipe recipe, Expedition2EncounterLabel encounterLabel, PreOpenRecipeMatchMode matchMode)
+    {
+        if (matchMode == PreOpenRecipeMatchMode.NoRuneFilter)
+            return true;
+
+        try
+        {
+            if (matchMode == PreOpenRecipeMatchMode.StrictRunePosition)
+            {
+                var fixedRunePosition = encounterLabel.FixedRunePosition;
+                if (fixedRunePosition < 0)
+                    return false;
+
+                var runeAtPosition = recipe.Runes.ElementAtOrDefault(fixedRunePosition);
+                return Equals(runeAtPosition, encounterLabel.FixedRune);
+            }
+
+            foreach (var rune in recipe.Runes)
+            {
+                if (Equals(rune, encounterLabel.FixedRune))
+                    return true;
+            }
+        }
+        catch
+        {
+        }
+
+        return false;
     }
 
     private void PrunePreOpenRecipePreviewCache(DateTime now)
@@ -1734,7 +1855,7 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
                     continue;
 
                 var value = Convert.ToInt32(state.Value, CultureInfo.InvariantCulture);
-                if (value <= 0 || value > 20)
+                if (value <= 0 || value > MaxReasonableExpeditionRuneSockets)
                     return false;
 
                 socketCount = value;
@@ -1810,7 +1931,7 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
                 .ToList();
 
             var areaLevel = GameController.IngameState.Data.CurrentAreaLevel;
-            var allRecipes = GameController.Files.Expedition2Recipes.EntriesList.ToLookup(x => x.RuneCountRequired);
+            var allRecipes = GameController.Files.Expedition2Recipes.EntriesList;
             var runeWeights = GameController.Files.Expedition2RunesWeights.EntriesList;
             var index = 1;
             var handledEntityIds = new HashSet<uint>();
@@ -1827,23 +1948,8 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
                     ? Math.Max(socketsFromState, encounterLabel.RuneCount)
                     : encounterLabel.RuneCount;
 
-                var allowedRuneCounts = runeWeights
-                    .Where(x => x.RuneSlot - 1 == encounterLabel.FixedRunePosition)
-                    .Where(x => x.Rune.Equals(encounterLabel.FixedRune))
-                    .Where(x => x.Level <= areaLevel)
-                    .Select(x => x.SlotCount)
-                    .ToHashSet();
-
                 var rewards = Settings.EnablePriceApi.Value
-                    ? allRecipes
-                        .Where(x => x.Key <= stateRuneCount)
-                        .SelectMany(x => x)
-                        .Where(x => allowedRuneCounts.Contains(x.RuneCountRequired))
-                        .Where(x => x.MinLevelReq <= areaLevel && x.MaxLevelReq >= areaLevel)
-                        .Where(x => x.Runes.ElementAtOrDefault(encounterLabel.FixedRunePosition)?.Equals(encounterLabel.FixedRune) == true)
-                        .Select(ToPreOpenEntry)
-                        .Where(x => x != null)
-                        .Select(x => x!)
+                    ? BuildBestPreOpenPreviewEntries(encounterLabel, stateRuneCount, areaLevel, allRecipes, runeWeights)
                         .Where(x => Settings.ExpeditionModeShowZeroPriceRewards.Value || x.Value > 0)
                         .Where(x => Settings.ExpeditionModeMinimumValue.Value <= 0 || x.Value >= Settings.ExpeditionModeMinimumValue.Value)
                         .OrderByDescending(x => x.Value)
@@ -2357,7 +2463,7 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
             
             
             
-            var optionId = optionCount;
+            var optionId = ReferenceIdentity(option);
             directOptionScratchIds.Add(optionId);
 
             if (SafeGet(option, "IsValid") is bool valid && !valid)
@@ -2370,8 +2476,11 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
                 continue;
 
             var rect = GetRect(option);
+            var recipeObj = SafeGet(option, "Recipe");
+            var recipeId = recipeObj != null ? ReferenceIdentity(recipeObj) : 0;
 
-            var shouldRebuildCache = !directOptionCache.TryGetValue(optionId, out var cached);
+            var shouldRebuildCache = !directOptionCache.TryGetValue(optionId, out var cached) ||
+                                     cached!.RecipeId != recipeId;
             if (!shouldRebuildCache && cached!.HasNoRecipe &&
                 (now - cached.LastResolveAttemptUtc).TotalMilliseconds >= DirectOptionNoRewardRetryMs)
             {
@@ -2381,7 +2490,6 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
             if (shouldRebuildCache)
             {
                 cacheMisses++;
-                var recipeObj = SafeGet(option, "Recipe");
                 cached = BuildDirectOptionCacheEntry(optionId, rect, recipeObj, option);
                 cached.LastResolveAttemptUtc = now;
                 directOptionCache[optionId] = cached;
@@ -2442,6 +2550,7 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
     {
         return string.Join("|",
             enabledItemNames.Count,
+            lastEnabledRewardsFingerprint,
             Settings.HighlightAllVisibleRewards.Value,
             Settings.HighlightMostValuableReward.Value,
             Settings.HighlightOnlyTopTwoPicks.Value,
@@ -2449,7 +2558,10 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
             Settings.MinimumValueToHighlight.Value,
             Settings.ShowPriceOnReward.Value,
             Settings.DisplayPricesInExaltedOrbs.Value,
-            Settings.DisplayPricesInDivineOrbs.Value);
+            Settings.DisplayPricesInDivineOrbs.Value,
+            priceCache.Count,
+            rawPriceCache.Count,
+            lastPriceRefreshUtc.Ticks);
     }
 
     private DirectOptionCacheEntry BuildDirectOptionCacheEntry(int optionId, ExileCore2.Shared.RectangleF rect, object? recipeObj, object option)
@@ -2457,7 +2569,7 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
         var result = new DirectOptionCacheEntry
         {
             OptionId = optionId,
-            RecipeId = 0,
+            RecipeId = recipeObj != null ? ReferenceIdentity(recipeObj) : 0,
             Rect = rect,
             HasBadRect = !IsGoodRect(rect),
             HasNoRecipe = true
