@@ -62,7 +62,6 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
     private int consecutiveEmptyRewardScans;
     private const int VisibleRewardStickyMs = 350;
     private const int MaxDirectOptionsForLiveScan = 4096;
-    private const int DirectOptionNoRewardRetryMs = 750;
     private const int MaxReasonableExpeditionRuneSockets = 512;
 
     private sealed class DirectOptionCacheEntry
@@ -78,25 +77,12 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
         public VisibleReward Reward { get; set; }
         public string DedupKey { get; set; } = string.Empty;
         public DateTime LastSeenUtc { get; set; }
-        public DateTime LastResolveAttemptUtc { get; set; }
     }
 
     private static readonly HttpClient priceHttpClient = new();
     private static readonly object ReflectionCacheMiss = new();
     private static readonly ConcurrentDictionary<(Type Type, string Name), object> ReflectionMemberCache = new();
     private static readonly ConcurrentDictionary<(Type Type, string Name), object> ReflectionMethodCache = new();
-    private static readonly string[] RewardTextMemberNames =
-    {
-        "Description",
-        "RewardName",
-        "DisplayName",
-        "BaseName",
-        "Name",
-        "TextNoTags",
-        "Text",
-        "Label"
-    };
-
     private sealed class SpikeProfiler
     {
         private readonly Dictionary<string, Metric> metrics = new(StringComparer.Ordinal);
@@ -221,6 +207,8 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
         public Expedition2EncounterLabel? LabelSource { get; set; }
         public Vector2 ScreenPosition { get; set; }
         public Vector2 GridPosition { get; set; }
+        public Vector3 WorldPosition { get; set; }
+        public bool HasWorldPosition { get; set; }
         public int RuneCount { get; set; }
         public string FixedRune { get; set; } = string.Empty;
         public List<PreOpenPreviewEntry> Rewards { get; set; } = new();
@@ -421,6 +409,7 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
                 {
                     DrawExpeditionModeWindow();
                     DrawExpeditionModeTooltips();
+                    DrawExpeditionModeEncounterLines();
                 }
 
                 var topValue = 0d;
@@ -734,7 +723,7 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
             "Preview cache" => "Enable Pre-Open Preview, Preview Best Reward Only, Preview Top 2 Picks Only, Preview Use Minimum Value Filter, Preview Max Lines, Preview Minimum Value",
             "Preview draw" => "Enable Pre-Open Preview, Preview offsets/background, Preview Best/Top2 mode, Preview Max Lines",
             "Expedition cache" => "ExpeditionMode, ExpeditionMode Max Rewards Per Encounter, ExpeditionMode Minimum Value, ExpeditionMode Show Zero Price Rewards",
-            "Expedition draw" => "ExpeditionMode Window, ExpeditionMode Tooltip Overlay, Tooltip Best Reward Only, Tooltip Top 2 Only, Tooltip Fallback List, Tooltip offsets/background",
+            "Expedition draw" => "ExpeditionMode Window, ExpeditionMode Tooltip Overlay, Tooltip Best Reward Only, Tooltip Top 2 Only, Tooltip Fallback List, Tooltip offsets/background, ExpeditionMode Draw Lines To Encounters",
             "Highlight draw" => "Highlight Most Valuable Reward, Highlight Rewards Above Value, Highlight Only Top 2 Picks, Highlight Only Rewards Above Value, Show Price On Reward, Draw Full Row, Frame Thickness/Colors",
             "Scan tick" => "Scan Interval plus Prices/check, UI reward scan and Flicker cache combined",
             "Render total" => "All enabled RuneHighlighter options active this frame",
@@ -751,6 +740,118 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
             return detectedLeagueName;
 
         return "auto/unknown";
+    }
+
+
+    private static bool TryGetEntityWorldPosition(Entity? entity, out Vector3 position)
+    {
+        position = default;
+
+        try
+        {
+            var render = entity?.GetComponent<Render>();
+            if (render == null)
+                return false;
+
+            position = render.Pos;
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static bool TryGetExpeditionModeLineTarget(ExpeditionModeEncounterEntry entry, float offscreenMargin, out Vector2 screenPosition)
+    {
+        screenPosition = default;
+
+        try
+        {
+            if (entry.LabelSource != null && entry.LabelSource.IsVisible)
+            {
+                var rect = entry.LabelSource.GetClientRect();
+                if (rect.Width > 1 && rect.Height > 1)
+                {
+                    screenPosition = new Vector2(rect.X + rect.Width / 2f, rect.Y + rect.Height / 2f);
+                    return IsWithinLineViewport(screenPosition, offscreenMargin);
+                }
+            }
+
+            if (IsWithinLineViewport(entry.ScreenPosition, offscreenMargin))
+            {
+                screenPosition = entry.ScreenPosition;
+                return true;
+            }
+        }
+        catch
+        {
+        }
+
+        return false;
+    }
+
+    private void DrawExpeditionModeEncounterLines()
+    {
+        if (!Settings.ExpeditionModeDrawLinesToEncounters.Value)
+            return;
+
+        if (cachedExpeditionModeEntries.Count == 0)
+            return;
+
+        try
+        {
+            var playerRender = GameController?.Player?.GetComponent<Render>();
+            var camera = GameController?.IngameState?.Camera;
+            if (playerRender == null || camera == null)
+                return;
+
+            var playerScreen = camera.WorldToScreen(playerRender.Pos);
+            var ranked = cachedExpeditionModeEntries
+                .Select(entry => new
+                {
+                    Entry = entry,
+                    BestValue = entry.Rewards.Count > 0 ? entry.Rewards.Max(reward => reward.Value) : 0d
+                })
+                .OrderByDescending(x => x.BestValue)
+                .ToList();
+
+            var topPickEntry = ranked.Count > 0 && ranked[0].BestValue > 0 ? ranked[0].Entry : null;
+            var secondPickEntry = ranked.Count > 1 && ranked[1].BestValue > 0 ? ranked[1].Entry : null;
+            var drawOnlyBest = Settings.ExpeditionModeLinesOnlyBestPicks.Value;
+            var thickness = Math.Max(1, Settings.ExpeditionModeLineThickness.Value);
+            var offscreenMargin = Math.Max(0, Settings.ExpeditionModeLineOffscreenMargin.Value);
+
+            foreach (var entry in cachedExpeditionModeEntries)
+            {
+                var isTopPick = ReferenceEquals(entry, topPickEntry);
+                var isSecondPick = ReferenceEquals(entry, secondPickEntry);
+                if (drawOnlyBest && !isTopPick && !isSecondPick)
+                    continue;
+
+                Vector2 targetScreen;
+                if (!TryGetExpeditionModeLineTarget(entry, offscreenMargin, out targetScreen))
+                {
+                    if (!entry.HasWorldPosition)
+                        continue;
+
+                    targetScreen = camera.WorldToScreen(entry.WorldPosition);
+                    if (!IsWithinLineViewport(targetScreen, offscreenMargin))
+                        continue;
+                }
+
+                var color = isTopPick
+                    ? Settings.TopPickColor.Value
+                    : isSecondPick
+                        ? Settings.SecondPickColor.Value
+                        : Settings.FrameColor.Value;
+
+                Graphics.DrawLine(playerScreen, targetScreen, thickness, color);
+            }
+        }
+        catch
+        {
+        }
     }
 
     private void DrawDebugOverlay()
@@ -858,6 +959,12 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
         DrawIntSlider(Settings.ExpeditionModeTooltipFallbackY, "Tooltip Fallback Y");
         DrawIntSlider(Settings.ExpeditionModeTooltipBackgroundOpacity, "Tooltip Fallback Background Opacity");
         DrawColor(Settings.ExpeditionModeHeaderColor, "Expedition Header Color");
+
+        ImGui.Separator();
+        DrawToggle(Settings.ExpeditionModeDrawLinesToEncounters, "Draw Lines To Encounters");
+        DrawToggle(Settings.ExpeditionModeLinesOnlyBestPicks, "Lines Only Best Picks");
+        DrawIntSlider(Settings.ExpeditionModeLineThickness, "Line Thickness");
+        DrawIntSlider(Settings.ExpeditionModeLineOffscreenMargin, "Line Offscreen Margin");
 
         ImGui.TextDisabled("Window lists all encounters. Tooltip fallback controls position the on-screen list and BEST PICK line.");
         ImGui.Text($"Detected encounters: {cachedExpeditionModeEntries.Count}");
@@ -1246,6 +1353,44 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
         return position.X > 1 && position.Y > 1 && position.X < 10000 && position.Y < 10000;
     }
 
+    private static bool IsFiniteScreenPosition(Vector2 position)
+    {
+        return !float.IsNaN(position.X) &&
+               !float.IsNaN(position.Y) &&
+               !float.IsInfinity(position.X) &&
+               !float.IsInfinity(position.Y) &&
+               Math.Abs(position.X) < 100000 &&
+               Math.Abs(position.Y) < 100000;
+    }
+
+    private static bool IsProbablyInvalidOriginProjection(Vector2 position)
+    {
+        return Math.Abs(position.X) <= 2 && Math.Abs(position.Y) <= 2;
+    }
+
+    private static bool IsWithinLineViewport(Vector2 position, float margin)
+    {
+        if (!IsFiniteScreenPosition(position) || IsProbablyInvalidOriginProjection(position))
+            return false;
+
+        try
+        {
+            var displaySize = ImGui.GetIO().DisplaySize;
+            if (displaySize.X > 0 && displaySize.Y > 0)
+            {
+                return position.X >= -margin &&
+                       position.Y >= -margin &&
+                       position.X <= displaySize.X + margin &&
+                       position.Y <= displaySize.Y + margin;
+            }
+        }
+        catch
+        {
+        }
+
+        return true;
+    }
+
     private static bool IsWithinViewport(Vector2 position, float margin = OffscreenHideMarginPixels)
     {
         if (!IsDrawableScreenPosition(position))
@@ -1260,6 +1405,29 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
                        position.Y >= -margin &&
                        position.X <= displaySize.X + margin &&
                        position.Y <= displaySize.Y + margin;
+            }
+        }
+        catch
+        {
+        }
+
+        return true;
+    }
+
+    private static bool IsStrictlyInsideViewport(Vector2 position, float edgeMargin = 12f)
+    {
+        if (!IsDrawableScreenPosition(position))
+            return false;
+
+        try
+        {
+            var displaySize = ImGui.GetIO().DisplaySize;
+            if (displaySize.X > 0 && displaySize.Y > 0)
+            {
+                return position.X >= edgeMargin &&
+                       position.Y >= edgeMargin &&
+                       position.X <= displaySize.X - edgeMargin &&
+                       position.Y <= displaySize.Y - edgeMargin;
             }
         }
         catch
@@ -1552,10 +1720,23 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
 
     private string BuildPreOpenRecipeCacheKey(Expedition2EncounterLabel encounterLabel, Entity? entity, int areaLevel)
     {
+        var entityId = entity?.Id ?? 0u;
+        var gridX = entity?.GridPos.X ?? 0;
+        var gridY = entity?.GridPos.Y ?? 0;
+        var labelRuneCount = Math.Max(0, encounterLabel.RuneCount);
+        var stateRuneCount = TryGetExpeditionStateSocketCount(entity, out var socketsFromState)
+            ? Math.Max(0, socketsFromState)
+            : 0;
+
         return string.Join("|",
             areaLevel,
+            entityId,
+            gridX,
+            gridY,
             encounterLabel.FixedRunePosition,
             Convert.ToString(encounterLabel.FixedRune, CultureInfo.InvariantCulture) ?? string.Empty,
+            labelRuneCount,
+            stateRuneCount,
             GetEffectiveEncounterRuneCount(encounterLabel, entity),
             GetPriceDisplayUnitKey(),
             rawPriceCache.Count,
@@ -1624,33 +1805,24 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
             useAllowedRuneCounts: allowedRuneCounts.Count > 0,
             matchMode: PreOpenRecipeMatchMode.StrictRunePosition);
 
-        result = PreferBetterPreOpenFallback(
+        result = PreferPreOpenFallbackOnlyWhenEmpty(
             result,
             BuildPreOpenPreviewEntries(encounterLabel, effectiveRuneCount, areaLevel, allRecipes, allowedRuneCounts, false, PreOpenRecipeMatchMode.StrictRunePosition));
 
-        result = PreferBetterPreOpenFallback(
+        result = PreferPreOpenFallbackOnlyWhenEmpty(
             result,
             BuildPreOpenPreviewEntries(encounterLabel, effectiveRuneCount, areaLevel, allRecipes, allowedRuneCounts, false, PreOpenRecipeMatchMode.AnyRunePosition));
-
-        result = PreferBetterPreOpenFallback(
-            result,
-            BuildPreOpenPreviewEntries(encounterLabel, effectiveRuneCount, areaLevel, allRecipes, allowedRuneCounts, false, PreOpenRecipeMatchMode.NoRuneFilter));
 
         result.Sort(static (a, b) => b.Value.CompareTo(a.Value));
         return result;
     }
 
-    private static List<PreOpenPreviewEntry> PreferBetterPreOpenFallback(List<PreOpenPreviewEntry> current, List<PreOpenPreviewEntry> fallback)
+    private static List<PreOpenPreviewEntry> PreferPreOpenFallbackOnlyWhenEmpty(List<PreOpenPreviewEntry> current, List<PreOpenPreviewEntry> fallback)
     {
-        if (fallback.Count == 0)
+        if (current.Count > 0)
             return current;
 
-        if (current.Count == 0)
-            return fallback;
-
-        var currentHasPricedEntry = current.Any(x => x.Value > 0);
-        var fallbackHasPricedEntry = fallback.Any(x => x.Value > 0);
-        return !currentHasPricedEntry && fallbackHasPricedEntry ? fallback : current;
+        return fallback.Count > 0 ? fallback : current;
     }
 
     private HashSet<int> BuildAllowedRuneCounts(
@@ -1901,7 +2073,9 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
 
     private void UpdateExpeditionModeCache()
     {
-        if (!Settings.EnableExpeditionMode.Value && !Settings.EnableExpeditionModeTooltip.Value)
+        if (!Settings.EnableExpeditionMode.Value &&
+            !Settings.EnableExpeditionModeTooltip.Value &&
+            !Settings.ExpeditionModeDrawLinesToEncounters.Value)
         {
             cachedExpeditionModeEntries.Clear();
             return;
@@ -1964,6 +2138,7 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
                     rawScreenPos = Vector2.Zero;
 
                 var grid = new Vector2(entity.GridPos.X, entity.GridPos.Y);
+                var hasWorldPosition = TryGetEntityWorldPosition(entity, out var worldPosition);
 
                 cachedExpeditionModeEntries.Add(new ExpeditionModeEncounterEntry
                 {
@@ -1971,6 +2146,8 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
                     LabelSource = encounterLabel,
                     ScreenPosition = rawScreenPos,
                     GridPosition = grid,
+                    WorldPosition = worldPosition,
+                    HasWorldPosition = hasWorldPosition,
                     RuneCount = stateRuneCount,
                     FixedRune = Convert.ToString(encounterLabel.FixedRune) ?? string.Empty,
                     Rewards = rewards
@@ -1986,6 +2163,7 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
                     continue;
 
                 var grid = new Vector2(entity.GridPos.X, entity.GridPos.Y);
+                var hasWorldPosition = TryGetEntityWorldPosition(entity, out var worldPosition);
 
                 cachedExpeditionModeEntries.Add(new ExpeditionModeEncounterEntry
                 {
@@ -1993,6 +2171,8 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
                     LabelSource = null,
                     ScreenPosition = Vector2.Zero,
                     GridPosition = grid,
+                    WorldPosition = worldPosition,
+                    HasWorldPosition = hasWorldPosition,
                     RuneCount = socketsFromState,
                     FixedRune = string.Empty,
                     Rewards = new List<PreOpenPreviewEntry>()
@@ -2481,17 +2661,11 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
 
             var shouldRebuildCache = !directOptionCache.TryGetValue(optionId, out var cached) ||
                                      cached!.RecipeId != recipeId;
-            if (!shouldRebuildCache && cached!.HasNoRecipe &&
-                (now - cached.LastResolveAttemptUtc).TotalMilliseconds >= DirectOptionNoRewardRetryMs)
-            {
-                shouldRebuildCache = true;
-            }
 
             if (shouldRebuildCache)
             {
                 cacheMisses++;
                 cached = BuildDirectOptionCacheEntry(optionId, rect, recipeObj, option);
-                cached.LastResolveAttemptUtc = now;
                 directOptionCache[optionId] = cached;
             }
             else
@@ -2572,14 +2746,18 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
             RecipeId = recipeObj != null ? ReferenceIdentity(recipeObj) : 0,
             Rect = rect,
             HasBadRect = !IsGoodRect(rect),
-            HasNoRecipe = true
+            HasNoRecipe = recipeObj is not Expedition2Recipe
         };
 
-        var entry = TryBuildDirectOptionEntry(recipeObj, option);
-        if (entry == null || string.IsNullOrWhiteSpace(entry.Name))
+        if (result.HasNoRecipe || recipeObj is not Expedition2Recipe recipe)
             return result;
 
-        result.HasNoRecipe = false;
+        var entry = ToPreOpenEntry(recipe);
+        if (entry == null || string.IsNullOrWhiteSpace(entry.Name))
+        {
+            result.HasNoRecipe = true;
+            return result;
+        }
 
         if (!ShouldHighlightRecipeEntry(entry))
         {
@@ -2597,219 +2775,6 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
             entry.Value);
         result.DedupKey = $"{optionId}:{NormalizeLooseRewardKey(entry.Name)}";
         return result;
-    }
-
-    private PreOpenPreviewEntry? TryBuildDirectOptionEntry(object? recipeObj, object option)
-    {
-        if (recipeObj is Expedition2Recipe recipe)
-            return ToPreOpenEntry(recipe);
-
-        var recipeLikeEntry = TryBuildEntryFromRecipeLikeObject(recipeObj);
-        if (recipeLikeEntry != null)
-            return recipeLikeEntry;
-
-        if (TryGetOptionRewardText(option, out var rewardText))
-            return BuildEntryFromRewardText(rewardText);
-
-        return null;
-    }
-
-    private PreOpenPreviewEntry? TryBuildEntryFromRecipeLikeObject(object? recipeObj)
-    {
-        if (recipeObj == null)
-            return null;
-
-        var rawName = ReadRewardNameFromObject(recipeObj);
-        if (string.IsNullOrWhiteSpace(rawName))
-            rawName = ReadRewardNameFromObject(SafeGet(recipeObj, "Reward"));
-
-        if (string.IsNullOrWhiteSpace(rawName))
-            return null;
-
-        var count = GetRewardCountFromObject(recipeObj);
-        var name = GetDumpBasedDisplayName(rawName, count);
-        if (string.IsNullOrWhiteSpace(name))
-            return null;
-
-        var unitPrice = 0d;
-        if (Settings.EnablePriceApi.Value &&
-            !TryGetDisplayPriceForName(name, out unitPrice) &&
-            !TryGetDisplayPriceForName(rawName, out unitPrice))
-        {
-            unitPrice = 0;
-        }
-
-        return new PreOpenPreviewEntry
-        {
-            Name = name,
-            Count = Math.Max(1, count),
-            Value = unitPrice * Math.Max(1, count)
-        };
-    }
-
-    private PreOpenPreviewEntry? BuildEntryFromRewardText(string rewardText)
-    {
-        var displayName = NormalizeRecipeDisplayName(rewardText, 1);
-        if (string.IsNullOrWhiteSpace(displayName))
-            return null;
-
-        var (stack, lookupName) = SplitRewardStack(displayName);
-        var unitPrice = 0d;
-        if (Settings.EnablePriceApi.Value &&
-            !TryGetDisplayPriceForName(lookupName, out unitPrice) &&
-            !TryGetDisplayPriceForName(displayName, out unitPrice))
-        {
-            unitPrice = 0;
-        }
-
-        return new PreOpenPreviewEntry
-        {
-            Name = displayName,
-            Count = Math.Max(1, stack),
-            Value = unitPrice * Math.Max(1, stack)
-        };
-    }
-
-    private bool TryGetOptionRewardText(object option, out string rewardText)
-    {
-        rewardText = string.Empty;
-
-        if (TryReadRewardTextFromObject(option, out rewardText))
-            return true;
-
-        var rewardObj = SafeGet(option, "Reward");
-        if (TryReadRewardTextFromObject(rewardObj, out rewardText))
-            return true;
-
-        var tooltipObj = SafeGet(option, "Tooltip");
-        if (TryReadRewardTextFromObject(tooltipObj, out rewardText))
-            return true;
-
-        foreach (var child in GetChildren(option))
-        {
-            if (TryReadRewardTextFromObject(child, out rewardText))
-                return true;
-
-            var childTooltip = SafeGet(child, "Tooltip");
-            if (TryReadRewardTextFromObject(childTooltip, out rewardText))
-                return true;
-        }
-
-        foreach (var child in GetChildren(option))
-        {
-            foreach (var grandChild in GetChildren(child))
-            {
-                if (TryReadRewardTextFromObject(grandChild, out rewardText))
-                    return true;
-            }
-        }
-
-        return false;
-    }
-
-    private bool TryReadRewardTextFromObject(object? obj, out string rewardText)
-    {
-        rewardText = string.Empty;
-        if (obj == null)
-            return false;
-
-        foreach (var memberName in RewardTextMemberNames)
-        {
-            var value = SafeGet(obj, memberName);
-            if (value is string text && TryAcceptOptionRewardText(text, out rewardText))
-                return true;
-        }
-
-        var rewardObj = SafeGet(obj, "Reward");
-        if (rewardObj != null && !ReferenceEquals(rewardObj, obj))
-        {
-            foreach (var memberName in RewardTextMemberNames)
-            {
-                var value = SafeGet(rewardObj, memberName);
-                if (value is string text && TryAcceptOptionRewardText(text, out rewardText))
-                    return true;
-            }
-        }
-
-        return false;
-    }
-
-    private bool TryAcceptOptionRewardText(string rawText, out string rewardText)
-    {
-        rewardText = CleanupText(rawText);
-        if (string.IsNullOrWhiteSpace(rewardText) || rewardText.Length > 160)
-            return false;
-
-        if (rewardText.Equals("Undiscovered", StringComparison.OrdinalIgnoreCase))
-            return false;
-
-        if (rewardText.Contains("Metadata/", StringComparison.OrdinalIgnoreCase) ||
-            rewardText.Contains("Art/Textures", StringComparison.OrdinalIgnoreCase) ||
-            rewardText.Contains("Expedition2Window", StringComparison.OrdinalIgnoreCase))
-            return false;
-
-        if (LooksLikeRewardText(rewardText) || IsEnabledRewardText(rewardText) || IsEnabledAlloyRewardText(rewardText))
-        {
-            rewardText = NormalizeRecipeDisplayName(rewardText, 1);
-            return !string.IsNullOrWhiteSpace(rewardText);
-        }
-
-        var (stack, lookupName) = SplitRewardStack(rewardText);
-        if (stack > 0 && Settings.EnablePriceApi.Value && TryGetDisplayPriceForName(lookupName, out var price) && price > 0)
-        {
-            rewardText = NormalizeRecipeDisplayName(rewardText, 1);
-            return !string.IsNullOrWhiteSpace(rewardText);
-        }
-
-        return false;
-    }
-
-    private static string? ReadRewardNameFromObject(object? obj)
-    {
-        if (obj == null)
-            return null;
-
-        foreach (var memberName in RewardTextMemberNames)
-        {
-            var value = SafeGet(obj, memberName);
-            if (value is string text)
-            {
-                text = CleanupText(text);
-                if (!string.IsNullOrWhiteSpace(text) &&
-                    !text.Contains("Metadata/", StringComparison.OrdinalIgnoreCase) &&
-                    !text.Contains("Art/Textures", StringComparison.OrdinalIgnoreCase))
-                {
-                    return text;
-                }
-            }
-        }
-
-        return null;
-    }
-
-    private static int GetRewardCountFromObject(object? obj)
-    {
-        if (obj == null)
-            return 1;
-
-        foreach (var memberName in new[] { "RewardCount", "StackSize", "Stack", "Count", "Amount", "Quantity" })
-        {
-            var value = SafeGet(obj, memberName);
-            if (value == null)
-                continue;
-
-            try
-            {
-                var count = Convert.ToInt32(value, CultureInfo.InvariantCulture);
-                if (count > 0)
-                    return count;
-            }
-            catch
-            {
-            }
-        }
-
-        return 1;
     }
 
     private static void UpdateDirectOptionCacheEntryRect(DirectOptionCacheEntry entry, ExileCore2.Shared.RectangleF rect)

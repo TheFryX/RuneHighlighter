@@ -134,6 +134,18 @@ public class RuneHighlighterSettings : ISettings
     [Menu("ExpeditionMode Tooltip Fallback Y")]
     public RangeNode<int> ExpeditionModeTooltipFallbackY { get; set; } = new RangeNode<int>(260, 0, 3000);
 
+    [Menu("ExpeditionMode Draw Lines To Encounters", "Draws lines from the player to ExpeditionMode encounters. Uses the same cached encounter list as ExpeditionMode.")]
+    public ToggleNode ExpeditionModeDrawLinesToEncounters { get; set; } = new ToggleNode(false);
+
+    [Menu("ExpeditionMode Lines Only Best Picks", "ON = draw only the best and second-best detected encounters. OFF = draw lines to all detected encounters.")]
+    public ToggleNode ExpeditionModeLinesOnlyBestPicks { get; set; } = new ToggleNode(false);
+
+    [Menu("ExpeditionMode Line Thickness")]
+    public RangeNode<int> ExpeditionModeLineThickness { get; set; } = new RangeNode<int>(2, 1, 10);
+
+    [Menu("ExpeditionMode Line Offscreen Margin", "How far outside the visible screen a line target may be before the line is hidden. Higher values keep lines visible from farther away.")]
+    public RangeNode<int> ExpeditionModeLineOffscreenMargin { get; set; } = new RangeNode<int>(650, 0, 2000);
+
 
     [Menu("Display Prices In Exalted Orbs", "ON = values are shown in Exalted Orb units.")]
     public ToggleNode DisplayPricesInExaltedOrbs { get; set; } = new ToggleNode(true);
