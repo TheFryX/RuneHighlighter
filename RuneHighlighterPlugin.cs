@@ -1609,7 +1609,7 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
             
             
             var labels = GameController.IngameState.IngameUi.ItemsOnGroundLabelsVisible
-                .Where(x => x?.ItemOnGround?.Metadata?.StartsWith("Metadata/MiscellaneousObjects/Expedition2/Expedition2Encounter", StringComparison.Ordinal) == true)
+                .Where(x => IsExpedition2Encounter(x?.ItemOnGround))
                 .Select(x => (GroundLabel: x, EncounterLabel: x.Label.AsObject<Expedition2EncounterLabel>()))
                 .Where(x => x.EncounterLabel != null)
                 .ToList();
@@ -1813,6 +1813,10 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
             result,
             BuildPreOpenPreviewEntries(encounterLabel, effectiveRuneCount, areaLevel, allRecipes, allowedRuneCounts, false, PreOpenRecipeMatchMode.AnyRunePosition));
 
+        result = PreferPreOpenFallbackOnlyWhenEmpty(
+            result,
+            BuildPreOpenPreviewEntries(encounterLabel, effectiveRuneCount, areaLevel, allRecipes, allowedRuneCounts, false, PreOpenRecipeMatchMode.NoRuneFilter));
+
         result.Sort(static (a, b) => b.Value.CompareTo(a.Value));
         return result;
     }
@@ -1823,6 +1827,60 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
             return current;
 
         return fallback.Count > 0 ? fallback : current;
+    }
+
+    private static bool TryReadComparableMember(object value, string memberName, out string result)
+    {
+        result = string.Empty;
+
+        try
+        {
+            var type = value.GetType();
+            var prop = type.GetProperty(memberName);
+            var memberValue = prop?.GetValue(value);
+
+            if (memberValue == null)
+            {
+                var field = type.GetField(memberName);
+                memberValue = field?.GetValue(value);
+            }
+
+            if (memberValue == null)
+                return false;
+
+            result = CleanupText(Convert.ToString(memberValue, CultureInfo.InvariantCulture) ?? string.Empty);
+            return !string.IsNullOrWhiteSpace(result) && !string.Equals(result, "0", StringComparison.OrdinalIgnoreCase);
+        }
+        catch
+        {
+            result = string.Empty;
+            return false;
+        }
+    }
+
+    private static bool RunesMatch(object? left, object? right)
+    {
+        if (left == null || right == null)
+            return false;
+
+        if (ReferenceEquals(left, right) || Equals(left, right))
+            return true;
+
+        foreach (var memberName in new[] { "Id", "Index", "Row", "Address", "BaseName", "Name", "Metadata" })
+        {
+            if (TryReadComparableMember(left, memberName, out var leftValue) &&
+                TryReadComparableMember(right, memberName, out var rightValue) &&
+                string.Equals(leftValue, rightValue, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        var leftText = CleanupText(Convert.ToString(left, CultureInfo.InvariantCulture) ?? string.Empty);
+        var rightText = CleanupText(Convert.ToString(right, CultureInfo.InvariantCulture) ?? string.Empty);
+
+        return !string.IsNullOrWhiteSpace(leftText) &&
+               string.Equals(leftText, rightText, StringComparison.OrdinalIgnoreCase);
     }
 
     private HashSet<int> BuildAllowedRuneCounts(
@@ -1836,7 +1894,7 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
             try
             {
                 if (weight.RuneSlot - 1 == encounterLabel.FixedRunePosition &&
-                    Equals(weight.Rune, encounterLabel.FixedRune) &&
+                    RunesMatch(weight.Rune, encounterLabel.FixedRune) &&
                     weight.Level <= areaLevel)
                 {
                     var slotCount = Convert.ToInt32(weight.SlotCount, CultureInfo.InvariantCulture);
@@ -1903,12 +1961,12 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
                     return false;
 
                 var runeAtPosition = recipe.Runes.ElementAtOrDefault(fixedRunePosition);
-                return Equals(runeAtPosition, encounterLabel.FixedRune);
+                return RunesMatch(runeAtPosition, encounterLabel.FixedRune);
             }
 
             foreach (var rune in recipe.Runes)
             {
-                if (Equals(rune, encounterLabel.FixedRune))
+                if (RunesMatch(rune, encounterLabel.FixedRune))
                     return true;
             }
         }
@@ -2068,7 +2126,15 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
 
     private static bool IsExpedition2Encounter(Entity? entity)
     {
-        return entity?.Metadata?.StartsWith("Metadata/MiscellaneousObjects/Expedition2/Expedition2Encounter", StringComparison.Ordinal) == true;
+        var metadata = entity?.Metadata;
+        if (string.IsNullOrWhiteSpace(metadata))
+            return false;
+
+        if (metadata.StartsWith("Metadata/MiscellaneousObjects/Expedition2/Expedition2Encounter", StringComparison.Ordinal))
+            return true;
+
+        return metadata.Contains("Expedition2", StringComparison.OrdinalIgnoreCase) &&
+               metadata.Contains("Encounter", StringComparison.OrdinalIgnoreCase);
     }
 
     private void UpdateExpeditionModeCache()
