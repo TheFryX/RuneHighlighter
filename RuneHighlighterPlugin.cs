@@ -20,6 +20,7 @@ using System.Net.Http;
 using System.Diagnostics;
 using System.IO;
 using System.Text;
+using System.Runtime.CompilerServices;
 using ExileCore2;
 using ImGuiNET;
 
@@ -158,6 +159,75 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
         public int Count { get; set; } = 1;
     }
 
+    private sealed class RerollAdvice
+    {
+        public string Text { get; set; } = string.Empty;
+        public Color Color { get; set; } = Color.White;
+
+        public bool HasText => !string.IsNullOrWhiteSpace(Text);
+    }
+
+    private sealed class ObservedRerollState
+    {
+        public string BaselineSignature { get; set; } = string.Empty;
+        public string LastSignature { get; set; } = string.Empty;
+        public DateTime FirstSeenUtc { get; set; }
+        public DateTime LastSeenUtc { get; set; }
+        public int SeenCount { get; set; }
+        public bool UsedByObservedStateChange { get; set; }
+    }
+
+    private sealed class RuneEconomicScore
+    {
+        public string Signature { get; init; } = string.Empty;
+        public double MaxValue { get; set; }
+        public double WeightedMaxValue { get; set; }
+        public double TotalValue { get; set; }
+        public double TotalWeightedValue { get; set; }
+        public int SeenCount { get; set; }
+
+        public double AverageValue => SeenCount > 0 ? TotalValue / SeenCount : 0;
+        public double AverageWeightedValue => SeenCount > 0 ? TotalWeightedValue / SeenCount : 0;
+    }
+
+    private sealed class RunePositionInsight
+    {
+        public string Text { get; set; } = string.Empty;
+        public Color Color { get; set; } = Color.White;
+        public double ScoreValue { get; set; }
+        public double AggregateScore { get; set; }
+        public int Slot { get; set; }
+        public double SlotWeight { get; set; }
+        public string Grade { get; set; } = string.Empty;
+        public string PrimaryRune { get; set; } = string.Empty;
+        public int ActiveWaves { get; set; }
+        public int TotalWaves { get; set; }
+        public int UniqueValuableRuneCount { get; set; }
+        public int DuplicateIgnoredCount { get; set; }
+        public bool HasText => !string.IsNullOrWhiteSpace(Text);
+        public bool IsHighCover { get; set; }
+        public bool IsMidCover { get; set; }
+        public bool IsLowCover { get; set; }
+        public bool HasCoverData { get; set; }
+    }
+
+    private sealed class RuneCoverageCandidate
+    {
+        public string Signature { get; init; } = string.Empty;
+        public int Slot { get; init; }
+        public int ActiveWaves { get; init; }
+        public int TotalWaves { get; init; }
+        public double SlotWeight { get; init; }
+        public double BaseValue { get; init; }
+        public double ScoreValue { get; init; }
+        public bool IsTransferred { get; init; }
+    }
+
+    private static readonly RerollAdvice EmptyRerollAdvice = new();
+    private static readonly RunePositionInsight EmptyRunePositionInsight = new();
+    private readonly Dictionary<string, RuneEconomicScore> cachedRuneEconomicScores = new(StringComparer.OrdinalIgnoreCase);
+    private string cachedRuneEconomicScoreSignature = string.Empty;
+
     private sealed class PreOpenRecipePreviewCacheEntry
     {
         public List<PreOpenPreviewEntry> AllEntries { get; init; } = new();
@@ -176,6 +246,7 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
         public Expedition2EncounterLabel EncounterLabel { get; init; } = null!;
         public Vector2 FallbackPosition { get; init; }
         public List<PreOpenPreviewEntry> Entries { get; init; } = new();
+        public RerollAdvice Advice { get; init; } = EmptyRerollAdvice;
     }
 
     private sealed class StableScreenAnchor
@@ -187,6 +258,10 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
 
     private const float StableTooltipHardSnapPixels = 260f;
     private const float StableTooltipLerpFactor = 0.35f;
+
+    // ExpeditionMode is intentionally a fixed on-screen summary/list.
+    // Near-rune previews are owned by Pre-Open Preview to avoid duplicated labels/highlights.
+    private const bool ExpeditionModeAlwaysUseFallbackList = true;
     private static readonly TimeSpan StableTooltipKeepAlive = TimeSpan.FromSeconds(6);
 
     private readonly Dictionary<string, StableScreenAnchor> stablePreOpenPreviewPositions = new(StringComparer.Ordinal);
@@ -212,6 +287,7 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
         public int RuneCount { get; set; }
         public string FixedRune { get; set; } = string.Empty;
         public List<PreOpenPreviewEntry> Rewards { get; set; } = new();
+        public RerollAdvice Advice { get; set; } = EmptyRerollAdvice;
     }
 
     private readonly List<ExpeditionModeEncounterEntry> cachedExpeditionModeEntries = new();
@@ -246,8 +322,18 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
     private readonly SpikeProfiler profiler = new();
     private DateTime lastProfilerTextLogUtc = DateTime.MinValue;
     private string profilerLogPath = string.Empty;
+    private string rerollDebugLogPath = string.Empty;
     private string lastSettingsSignature = string.Empty;
     private bool profilerLogPathInitialized;
+    private bool rerollDebugLogPathInitialized;
+    private bool rerollDebugHeaderWritten;
+    private int rerollDebugSnapshotCount;
+    private readonly object rerollDebugLogLock = new();
+    private readonly Dictionary<uint, string> rerollDebugLastSignatureByEntity = new();
+    private readonly Dictionary<string, ObservedRerollState> observedRerollStateByKey = new(StringComparer.Ordinal);
+    private DateTime lastObservedRerollStatePruneUtc = DateTime.MinValue;
+    private static readonly TimeSpan ObservedRerollStateKeepAlive = TimeSpan.FromMinutes(15);
+    private const int ObservedRerollStateStabilizeMs = 1500;
     private int localScannedObjects;
     private int candidatePanels;
     private int scannedRows;
@@ -260,6 +346,7 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
         Name = "RuneHighlighter";
         CacheRewardProperties();
         InitializeProfilerTextLog();
+        InitializeRerollDebugLog();
         TryLoadPriceCacheFromDisk();
         return base.Initialise();
     }
@@ -662,6 +749,603 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
         }
     }
 
+
+    private sealed class ReferenceObjectComparer : IEqualityComparer<object>
+    {
+        public new bool Equals(object? x, object? y) => ReferenceEquals(x, y);
+        public int GetHashCode(object obj) => RuntimeHelpers.GetHashCode(obj);
+    }
+
+    private void InitializeRerollDebugLog()
+    {
+        if (!Settings.RerollDebugLogEncounterChanges.Value)
+            return;
+
+        EnsureRerollDebugLogHeader();
+    }
+
+    private string GetRerollDebugLogPath()
+    {
+        if (!string.IsNullOrWhiteSpace(rerollDebugLogPath))
+            return rerollDebugLogPath;
+
+        var assemblyDirectory = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
+        if (string.IsNullOrWhiteSpace(assemblyDirectory))
+            assemblyDirectory = Environment.CurrentDirectory;
+
+        rerollDebugLogPath = Path.Combine(assemblyDirectory, "Profiler", "runehighlighter_reroll_debug.txt");
+        return rerollDebugLogPath;
+    }
+
+    private void TryCreateRerollDebugDirectory(string logPath)
+    {
+        if (rerollDebugLogPathInitialized)
+            return;
+
+        rerollDebugLogPathInitialized = true;
+
+        try
+        {
+            var directory = Path.GetDirectoryName(logPath);
+            if (!string.IsNullOrWhiteSpace(directory))
+                Directory.CreateDirectory(directory);
+        }
+        catch
+        {
+        }
+    }
+
+    private void EnsureRerollDebugLogHeader()
+    {
+        if (rerollDebugHeaderWritten)
+            return;
+
+        lock (rerollDebugLogLock)
+        {
+            if (rerollDebugHeaderWritten)
+                return;
+
+            var path = GetRerollDebugLogPath();
+            TryCreateRerollDebugDirectory(path);
+
+            try
+            {
+                if (Settings.RerollDebugClearLogOnStart.Value && File.Exists(path))
+                    File.Delete(path);
+            }
+            catch
+            {
+            }
+
+            var sb = new StringBuilder(2048);
+            sb.AppendLine("============================================================");
+            sb.AppendLine($"RuneHighlighter reroll debug started UTC={DateTime.UtcNow:O}");
+            sb.AppendLine($"Log path: {path}");
+            sb.AppendLine("Purpose: capture Expedition encounter data before/after roll changes and detect whether next recipes are exposed in memory.");
+            sb.AppendLine("Trigger: snapshot is written only when an encounter signature changes.");
+            sb.AppendLine("============================================================");
+            sb.AppendLine(BuildSettingsSnapshot("reroll debug settings"));
+            sb.AppendLine();
+
+            TryAppendRerollDebugText(sb.ToString());
+            rerollDebugHeaderWritten = true;
+        }
+    }
+
+    private void TryAppendRerollDebugText(string text)
+    {
+        var path = GetRerollDebugLogPath();
+        TryCreateRerollDebugDirectory(path);
+
+        try
+        {
+            lock (rerollDebugLogLock)
+                File.AppendAllText(path, text, Encoding.UTF8);
+            return;
+        }
+        catch
+        {
+        }
+
+        try
+        {
+            var fallbackDirectory = Path.Combine(Environment.CurrentDirectory, "RuneHighlighter", "Profiler");
+            Directory.CreateDirectory(fallbackDirectory);
+            var fallbackPath = Path.Combine(fallbackDirectory, "runehighlighter_reroll_debug.txt");
+            lock (rerollDebugLogLock)
+                File.AppendAllText(fallbackPath, text, Encoding.UTF8);
+            rerollDebugLogPath = fallbackPath;
+        }
+        catch
+        {
+        }
+    }
+
+    private void MaybeWriteRerollDebugSnapshot(
+        string source,
+        Entity? entity,
+        Expedition2EncounterLabel? encounterLabel,
+        IReadOnlyList<PreOpenPreviewEntry> rawRewards,
+        RerollAdvice advice,
+        int areaLevel)
+    {
+        if (!Settings.RerollDebugLogEncounterChanges.Value)
+            return;
+
+        if (entity == null || encounterLabel == null)
+            return;
+
+        if (rerollDebugSnapshotCount >= Math.Max(1, Settings.RerollDebugMaxSnapshots.Value))
+            return;
+
+        try
+        {
+            EnsureRerollDebugLogHeader();
+
+            var data = TryGetEncounterData(encounterLabel);
+            var signature = BuildRerollDebugSignature(entity, encounterLabel, data, rawRewards, advice, areaLevel);
+            var key = entity.Id;
+            if (key == 0)
+                key = unchecked((uint)Math.Abs(BuildStableObjectKey(encounterLabel).GetHashCode()));
+
+            if (rerollDebugLastSignatureByEntity.TryGetValue(key, out var previousSignature) &&
+                string.Equals(previousSignature, signature, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            var eventName = rerollDebugLastSignatureByEntity.ContainsKey(key) ? "CHANGED" : "FIRST_SEEN";
+            rerollDebugLastSignatureByEntity[key] = signature;
+            rerollDebugSnapshotCount++;
+
+            var sb = new StringBuilder(Settings.RerollDebugDeepDump.Value ? 65536 : 8192);
+            AppendRerollDebugSnapshotText(sb, source, eventName, entity, encounterLabel, data, rawRewards, advice, areaLevel, previousSignature, signature);
+            TryAppendRerollDebugText(sb.ToString());
+        }
+        catch
+        {
+        }
+    }
+
+    private string BuildRerollDebugSignature(
+        Entity entity,
+        Expedition2EncounterLabel encounterLabel,
+        Expedition2EncounterData? data,
+        IReadOnlyList<PreOpenPreviewEntry> rawRewards,
+        RerollAdvice advice,
+        int areaLevel)
+    {
+        var rewardSignature = rawRewards == null || rawRewards.Count == 0
+            ? "no-rewards"
+            : string.Join(";", rawRewards.Take(8).Select(x => $"{x.Count}x{x.Name}:{x.Value:0.####}"));
+
+        return string.Join("|",
+            areaLevel,
+            entity.Id,
+            entity.GridPos.X,
+            entity.GridPos.Y,
+            BuildEncounterDataSignature(data),
+            encounterLabel.RuneCount,
+            encounterLabel.FixedRunePosition,
+            BuildRuneSignature(SafeRead(() => encounterLabel.FixedRune)),
+            rewardSignature,
+            advice?.Text ?? string.Empty);
+    }
+
+    private static T? SafeRead<T>(Func<T?> getter)
+    {
+        try
+        {
+            return getter();
+        }
+        catch
+        {
+            return default;
+        }
+    }
+
+    private static object? TryReadObjectMember(object? value, string memberName)
+    {
+        if (value == null || string.IsNullOrWhiteSpace(memberName))
+            return null;
+
+        try
+        {
+            var type = value.GetType();
+            var prop = type.GetProperty(memberName, BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase);
+            if (prop != null && prop.GetIndexParameters().Length == 0)
+                return prop.GetValue(value);
+
+            var field = type.GetField(memberName, BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase);
+            return field?.GetValue(value);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private void AppendRerollDebugSnapshotText(
+        StringBuilder sb,
+        string source,
+        string eventName,
+        Entity entity,
+        Expedition2EncounterLabel encounterLabel,
+        Expedition2EncounterData? data,
+        IReadOnlyList<PreOpenPreviewEntry> rawRewards,
+        RerollAdvice advice,
+        int areaLevel,
+        string? previousSignature,
+        string signature)
+    {
+        sb.AppendLine("============================================================");
+        sb.AppendLine($"[{DateTime.UtcNow:O}] REROLL_DEBUG {eventName} source={source} snapshot={rerollDebugSnapshotCount}/{Math.Max(1, Settings.RerollDebugMaxSnapshots.Value)}");
+        sb.AppendLine($"AreaLevel={areaLevel} EntityId={entity.Id} Grid=({entity.GridPos.X},{entity.GridPos.Y}) Path={SafeValueToString(TryReadObjectMember(entity, "Path"))}");
+        sb.AppendLine($"PreviousSignature={previousSignature ?? "<none>"}");
+        sb.AppendLine($"CurrentSignature ={signature}");
+        sb.AppendLine();
+
+        AppendEncounterSummary(sb, encounterLabel, data, rawRewards, advice, areaLevel);
+
+        if (Settings.RerollDebugDeepDump.Value)
+        {
+            sb.AppendLine();
+            sb.AppendLine("-- Deep object dump --");
+            AppendObjectDump(sb, "EncounterLabel", encounterLabel, maxDepth: 2, maxLines: 220);
+            AppendObjectDump(sb, "EncounterData", data, maxDepth: 4, maxLines: 520);
+            AppendObjectDump(sb, "SelectedRecipe", ReadEncounterDataSelectedRecipe(data), maxDepth: 3, maxLines: 260);
+            AppendObjectDump(sb, "FixedRune", ReadEncounterDataFixedRune(data), maxDepth: 3, maxLines: 160);
+            AppendObjectDump(sb, "Entity", entity, maxDepth: 1, maxLines: 180);
+        }
+
+        sb.AppendLine();
+    }
+
+    private void AppendEncounterSummary(
+        StringBuilder sb,
+        Expedition2EncounterLabel encounterLabel,
+        Expedition2EncounterData? data,
+        IReadOnlyList<PreOpenPreviewEntry> rawRewards,
+        RerollAdvice advice,
+        int areaLevel)
+    {
+        var selectedRecipe = ReadEncounterDataSelectedRecipe(data);
+        var selectedRunes = ReadRecipeRunes(selectedRecipe);
+        var passedOn = ReadPassedOnRunePositions(data);
+        var isRerolledText = TryReadBoolMember(data, "IsRerolled", out var isRerolled)
+            ? isRerolled.ToString(CultureInfo.InvariantCulture)
+            : "unknown";
+        var rollUsedDetected = IsEncounterRerollUsed(data, encounterLabel);
+
+        sb.AppendLine("-- Summary --");
+        sb.AppendLine($"Advice={advice?.Text ?? string.Empty}");
+        sb.AppendLine($"DataSignature={BuildEncounterDataSignature(data)}");
+        sb.AppendLine($"Data.RuneCount={ReadEncounterDataRuneCount(data)} Data.FixedRunePosition={ReadEncounterDataFixedRunePosition(data)} Data.FixedRune={BuildRuneSignature(ReadEncounterDataFixedRune(data))} Data.IsRerolled={isRerolledText} RollUsedDetected={rollUsedDetected}");
+        sb.AppendLine($"Label.RuneCount={SafeRead(() => encounterLabel.RuneCount)} Label.FixedRunePosition={SafeRead(() => encounterLabel.FixedRunePosition)} Label.FixedRune={BuildRuneSignature(SafeRead(() => encounterLabel.FixedRune))}");
+        sb.AppendLine($"PassedOnRunePositions={(passedOn.Count == 0 ? "-" : string.Join(",", passedOn.Select(x => (x + 1).ToString(CultureInfo.InvariantCulture))))}");
+        sb.AppendLine($"SelectedRecipe={DescribeRecipe(selectedRecipe, areaLevel)}");
+        sb.AppendLine($"SelectedRecipeRunes={FormatRuneList(selectedRunes)}");
+        sb.AppendLine("TopCalculatedRewards=" + FormatDebugRewards(rawRewards, 12));
+        AppendSuspiciousRecipeLikeMembers(sb, data, "EncounterData");
+        AppendSuspiciousRecipeLikeMembers(sb, selectedRecipe, "SelectedRecipe");
+    }
+
+    private string DescribeRecipe(Expedition2Recipe? recipe, int areaLevel)
+    {
+        if (recipe == null)
+            return "<null>";
+
+        var entry = ToPreOpenEntry(recipe);
+        var runes = ReadRecipeRunes(recipe);
+        return string.Join(" | ",
+            $"Type={recipe.GetType().Name}",
+            $"Id={SafeValueToString(SafeRead(() => recipe.Id))}",
+            $"RuneCountRequired={SafeValueToString(SafeRead(() => recipe.RuneCountRequired))}",
+            $"Level={SafeValueToString(SafeRead(() => recipe.MinLevelReq))}-{SafeValueToString(SafeRead(() => recipe.MaxLevelReq))}",
+            $"AreaLevel={areaLevel}",
+            $"Reward={(entry == null ? "<no-price-entry>" : $"{entry.Count}x {entry.Name} value={FormatRewardValue(entry.Value)}")}",
+            $"Runes={FormatRuneList(runes)}");
+    }
+
+    private static string FormatRuneList(IReadOnlyList<object> runes)
+    {
+        if (runes == null || runes.Count == 0)
+            return "-";
+
+        return string.Join(" ", runes.Select((rune, index) => $"S{index + 1}:{BuildRuneSignature(rune)}"));
+    }
+
+    private string FormatDebugRewards(IReadOnlyList<PreOpenPreviewEntry> rewards, int max)
+    {
+        if (rewards == null || rewards.Count == 0)
+            return "-";
+
+        return string.Join("; ", rewards
+            .OrderByDescending(x => x.Value)
+            .Take(Math.Max(1, max))
+            .Select(x => $"{x.Count}x {x.Name} = {FormatRewardValue(x.Value)}"));
+    }
+
+    private void AppendSuspiciousRecipeLikeMembers(StringBuilder sb, object? value, string title)
+    {
+        if (value == null)
+            return;
+
+        try
+        {
+            var type = value.GetType();
+            var members = new List<string>();
+
+            foreach (var prop in type.GetProperties(BindingFlags.Public | BindingFlags.Instance))
+            {
+                if (prop.GetIndexParameters().Length > 0)
+                    continue;
+
+                if (!LooksLikeRerollRelatedMember(prop.Name))
+                    continue;
+
+                object? memberValue = null;
+                try { memberValue = prop.GetValue(value); } catch { }
+                members.Add($"{prop.Name}={SafeValueToString(memberValue)}");
+            }
+
+            foreach (var field in type.GetFields(BindingFlags.Public | BindingFlags.Instance))
+            {
+                if (!LooksLikeRerollRelatedMember(field.Name))
+                    continue;
+
+                object? memberValue = null;
+                try { memberValue = field.GetValue(value); } catch { }
+                members.Add($"{field.Name}={SafeValueToString(memberValue)}");
+            }
+
+            if (members.Count > 0)
+            {
+                sb.AppendLine($"{title}.RerollRelatedMembers:");
+                foreach (var line in members.Take(80))
+                    sb.AppendLine("  " + line);
+            }
+        }
+        catch
+        {
+        }
+    }
+
+    private static bool LooksLikeRerollRelatedMember(string name)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+            return false;
+
+        return name.IndexOf("recipe", StringComparison.OrdinalIgnoreCase) >= 0 ||
+               name.IndexOf("roll", StringComparison.OrdinalIgnoreCase) >= 0 ||
+               name.IndexOf("rune", StringComparison.OrdinalIgnoreCase) >= 0 ||
+               name.IndexOf("transfer", StringComparison.OrdinalIgnoreCase) >= 0 ||
+               name.IndexOf("pass", StringComparison.OrdinalIgnoreCase) >= 0 ||
+               name.IndexOf("next", StringComparison.OrdinalIgnoreCase) >= 0 ||
+               name.IndexOf("preview", StringComparison.OrdinalIgnoreCase) >= 0 ||
+               name.IndexOf("pending", StringComparison.OrdinalIgnoreCase) >= 0 ||
+               name.IndexOf("selected", StringComparison.OrdinalIgnoreCase) >= 0;
+    }
+
+    private static string BuildStableObjectKey(object? value)
+    {
+        if (value == null)
+            return "null";
+
+        return value.GetType().FullName + ":" + RuntimeHelpers.GetHashCode(value).ToString(CultureInfo.InvariantCulture);
+    }
+
+    private static string SafeValueToString(object? value)
+    {
+        if (value == null)
+            return "<null>";
+
+        try
+        {
+            if (value is string s)
+                return s;
+
+            if (value is bool or byte or sbyte or short or ushort or int or uint or long or ulong or float or double or decimal)
+                return Convert.ToString(value, CultureInfo.InvariantCulture) ?? string.Empty;
+
+            if (value is DateTime dt)
+                return dt.ToString("O", CultureInfo.InvariantCulture);
+
+            if (value is Vector2 v2)
+                return $"({v2.X:0.##},{v2.Y:0.##})";
+
+            if (value is Vector3 v3)
+                return $"({v3.X:0.##},{v3.Y:0.##},{v3.Z:0.##})";
+
+            if (value is IEnumerable enumerable && value is not string)
+            {
+                var items = new List<string>();
+                var count = 0;
+                foreach (var item in enumerable)
+                {
+                    if (count++ >= 12)
+                        break;
+                    items.Add(SafeValueToString(item));
+                }
+                return "[" + string.Join(", ", items) + (count > 12 ? ", ..." : string.Empty) + "]";
+            }
+
+            return Convert.ToString(value, CultureInfo.InvariantCulture) ?? value.GetType().Name;
+        }
+        catch
+        {
+            try { return value.GetType().FullName ?? value.GetType().Name; } catch { return "<error>"; }
+        }
+    }
+
+    private void AppendObjectDump(StringBuilder sb, string title, object? value, int maxDepth, int maxLines)
+    {
+        var remainingLines = Math.Max(20, maxLines);
+        var visited = new HashSet<object>(new ReferenceObjectComparer());
+        sb.AppendLine($"[{title}]");
+        AppendObjectDumpCore(sb, value, title, 0, Math.Max(0, maxDepth), ref remainingLines, visited);
+        if (remainingLines <= 0)
+            sb.AppendLine($"  ... dump truncated after {maxLines} lines");
+    }
+
+    private void AppendObjectDumpCore(StringBuilder sb, object? value, string path, int depth, int maxDepth, ref int remainingLines, HashSet<object> visited)
+    {
+        if (remainingLines <= 0)
+            return;
+
+        var indent = new string(' ', Math.Min(40, depth * 2));
+
+        if (value == null)
+        {
+            sb.AppendLine($"{indent}{path}=<null>");
+            remainingLines--;
+            return;
+        }
+
+        var type = value.GetType();
+        if (IsSimpleDebugValue(type))
+        {
+            sb.AppendLine($"{indent}{path}={SafeValueToString(value)}");
+            remainingLines--;
+            return;
+        }
+
+        if (!type.IsValueType)
+        {
+            if (!visited.Add(value))
+            {
+                sb.AppendLine($"{indent}{path}=<cycle {type.FullName}>");
+                remainingLines--;
+                return;
+            }
+        }
+
+        if (value is IEnumerable enumerable && value is not string)
+        {
+            sb.AppendLine($"{indent}{path}: {type.FullName}");
+            remainingLines--;
+            var index = 0;
+            foreach (var item in enumerable)
+            {
+                if (remainingLines <= 0)
+                    return;
+                if (index >= 32)
+                {
+                    sb.AppendLine($"{indent}  ... enumerable truncated");
+                    remainingLines--;
+                    return;
+                }
+                AppendObjectDumpCore(sb, item, $"[{index}]", depth + 1, maxDepth, ref remainingLines, visited);
+                index++;
+            }
+            return;
+        }
+
+        sb.AppendLine($"{indent}{path}: {type.FullName}");
+        remainingLines--;
+
+        if (depth >= maxDepth)
+            return;
+
+        foreach (var prop in type.GetProperties(BindingFlags.Public | BindingFlags.Instance).OrderBy(x => x.Name))
+        {
+            if (remainingLines <= 0)
+                return;
+            if (prop.GetIndexParameters().Length > 0)
+                continue;
+            if (ShouldSkipDebugMember(prop.Name))
+                continue;
+
+            object? memberValue = null;
+            var ok = false;
+            try
+            {
+                memberValue = prop.GetValue(value);
+                ok = true;
+            }
+            catch
+            {
+            }
+
+            if (!ok)
+            {
+                sb.AppendLine($"{indent}  {prop.Name}=<getter failed>");
+                remainingLines--;
+                continue;
+            }
+
+            if (memberValue == null || IsSimpleDebugValue(memberValue.GetType()))
+            {
+                sb.AppendLine($"{indent}  {prop.Name}={SafeValueToString(memberValue)}");
+                remainingLines--;
+            }
+            else
+            {
+                AppendObjectDumpCore(sb, memberValue, prop.Name, depth + 1, maxDepth, ref remainingLines, visited);
+            }
+        }
+
+        foreach (var field in type.GetFields(BindingFlags.Public | BindingFlags.Instance).OrderBy(x => x.Name))
+        {
+            if (remainingLines <= 0)
+                return;
+            if (ShouldSkipDebugMember(field.Name))
+                continue;
+
+            object? memberValue = null;
+            var ok = false;
+            try
+            {
+                memberValue = field.GetValue(value);
+                ok = true;
+            }
+            catch
+            {
+            }
+
+            if (!ok)
+            {
+                sb.AppendLine($"{indent}  {field.Name}=<field read failed>");
+                remainingLines--;
+                continue;
+            }
+
+            if (memberValue == null || IsSimpleDebugValue(memberValue.GetType()))
+            {
+                sb.AppendLine($"{indent}  {field.Name}={SafeValueToString(memberValue)}");
+                remainingLines--;
+            }
+            else
+            {
+                AppendObjectDumpCore(sb, memberValue, field.Name, depth + 1, maxDepth, ref remainingLines, visited);
+            }
+        }
+    }
+
+    private static bool IsSimpleDebugValue(Type type)
+    {
+        return type.IsPrimitive ||
+               type.IsEnum ||
+               type == typeof(string) ||
+               type == typeof(decimal) ||
+               type == typeof(DateTime) ||
+               type == typeof(Vector2) ||
+               type == typeof(Vector3);
+    }
+
+    private static bool ShouldSkipDebugMember(string name)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+            return false;
+
+        return string.Equals(name, "GameController", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(name, "TheGame", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(name, "Owner", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(name, "Parent", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(name, "Root", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(name, "Children", StringComparison.OrdinalIgnoreCase);
+    }
+
     private string BuildSettingsSnapshot(string title)
     {
         var sb = new StringBuilder(2048);
@@ -671,7 +1355,9 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
         sb.AppendLine($"Price: EnablePriceApi={Settings.EnablePriceApi.Value}, ShowPriceOnReward={Settings.ShowPriceOnReward.Value}, DisplayExalted={Settings.DisplayPricesInExaltedOrbs.Value}, DisplayDivine={Settings.DisplayPricesInDivineOrbs.Value}, AutoLeague={Settings.AutoDetectPoeNinjaLeague.Value}, RefreshMin={Settings.PriceRefreshIntervalMinutes.Value}, SafeMode={Settings.PriceApiSafeMode.Value}, RequestDelayMs={Settings.PriceApiRequestDelayMs.Value}, Cooldown429Min={Settings.PriceApi429CooldownMinutes.Value}");
         sb.AppendLine($"Highlight: MostValuable={Settings.HighlightMostValuableReward.Value}, Top2Only={Settings.HighlightOnlyTopTwoPicks.Value}, AboveValue={Settings.HighlightOnlyRewardsAboveValue.Value}, MinimumValue={Settings.MinimumValueToHighlight.Value}, FrameThickness={Settings.FrameThickness.Value}, TopPickThickness={Settings.TopPickFrameThickness.Value}");
         sb.AppendLine($"Preview: Enable={Settings.EnablePreOpenPreview.Value}, BestOnly={Settings.PreviewBestRewardOnly.Value}, Top2Only={Settings.PreviewTopTwoOnly.Value}, UseMinimumFilter={Settings.PreviewUseMinimumValueFilter.Value}, MaxLines={Settings.PreviewMaxLines.Value}, MinimumValue={Settings.PreviewMinimumValue.Value}");
-        sb.AppendLine($"ExpeditionMode: Window={Settings.EnableExpeditionMode.Value}, Tooltip={Settings.EnableExpeditionModeTooltip.Value}, TooltipBestOnly={Settings.ExpeditionModeTooltipBestOnly.Value}, TooltipTop2Only={Settings.ExpeditionModeTooltipTopTwoOnly.Value}, MaxRewards={Settings.ExpeditionModeMaxRewardsPerEncounter.Value}, MinimumValue={Settings.ExpeditionModeMinimumValue.Value}, ShowZero={Settings.ExpeditionModeShowZeroPriceRewards.Value}, FallbackList={Settings.ExpeditionModeTooltipFallbackList.Value}");
+        sb.AppendLine($"RerollAdvisor: Enable={Settings.EnableRerollAdvisor.Value}, RerollBelow={Settings.RerollAdvisorRerollBelowValue.Value}, KeepFrom={Settings.RerollAdvisorKeepValue.Value}, LockFrom={Settings.RerollAdvisorLockValue.Value}, ShowTransferSlots={Settings.RerollAdvisorShowTransferSlots.Value}, CoverScore={Settings.RerollAdvisorUseRunePositionScore.Value}, ShowCoverScore={Settings.RerollAdvisorShowRuneScore.Value}, ShowUsedStatus={Settings.RerollAdvisorShowRollUsedStatus.Value}, HideAfterUsed={Settings.RerollAdvisorHideAfterRollUsed.Value}, TransferBonus={Settings.RerollAdvisorTransferBonusPercent.Value}");
+        sb.AppendLine($"RerollDebug: Enable={Settings.RerollDebugLogEncounterChanges.Value}, DeepDump={Settings.RerollDebugDeepDump.Value}, ClearOnStart={Settings.RerollDebugClearLogOnStart.Value}, MaxSnapshots={Settings.RerollDebugMaxSnapshots.Value}");
+        sb.AppendLine($"ExpeditionMode: Window={Settings.EnableExpeditionMode.Value}, Tooltip={Settings.EnableExpeditionModeTooltip.Value}, TooltipBestOnly={Settings.ExpeditionModeTooltipBestOnly.Value}, TooltipTop2Only={Settings.ExpeditionModeTooltipTopTwoOnly.Value}, MaxRewards={Settings.ExpeditionModeMaxRewardsPerEncounter.Value}, MinimumValue={Settings.ExpeditionModeMinimumValue.Value}, ShowZero={Settings.ExpeditionModeShowZeroPriceRewards.Value}, FallbackList=AlwaysOn");
         sb.AppendLine($"Rewards: enabledRewardCount={enabledItemNames.Count}");
         return sb.ToString();
     }
@@ -709,7 +1395,21 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
             Settings.EnableExpeditionModeTooltip.Value,
             Settings.ExpeditionModeTooltipBestOnly.Value,
             Settings.ExpeditionModeTooltipTopTwoOnly.Value,
-            Settings.ExpeditionModeTooltipFallbackList.Value,
+            Settings.EnableRerollAdvisor.Value,
+            Settings.RerollAdvisorRerollBelowValue.Value,
+            Settings.RerollAdvisorKeepValue.Value,
+            Settings.RerollAdvisorLockValue.Value,
+            Settings.RerollAdvisorShowTransferSlots.Value,
+            Settings.RerollAdvisorUseRunePositionScore.Value,
+            Settings.RerollAdvisorShowRuneScore.Value,
+            Settings.RerollAdvisorShowWaveCoverageDetails.Value,
+            Settings.RerollAdvisorProtectHighCoverage.Value,
+            Settings.RerollAdvisorShowRollUsedStatus.Value,
+            Settings.RerollAdvisorHideAfterRollUsed.Value,
+            Settings.RerollAdvisorTransferBonusPercent.Value,
+            Settings.RerollDebugLogEncounterChanges.Value,
+            Settings.RerollDebugDeepDump.Value,
+            Settings.RerollDebugMaxSnapshots.Value,
             enabledItemNames.Count);
     }
 
@@ -723,7 +1423,7 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
             "Preview cache" => "Enable Pre-Open Preview, Preview Best Reward Only, Preview Top 2 Picks Only, Preview Use Minimum Value Filter, Preview Max Lines, Preview Minimum Value",
             "Preview draw" => "Enable Pre-Open Preview, Preview offsets/background, Preview Best/Top2 mode, Preview Max Lines",
             "Expedition cache" => "ExpeditionMode, ExpeditionMode Max Rewards Per Encounter, ExpeditionMode Minimum Value, ExpeditionMode Show Zero Price Rewards",
-            "Expedition draw" => "ExpeditionMode Window, ExpeditionMode Tooltip Overlay, Tooltip Best Reward Only, Tooltip Top 2 Only, Tooltip Fallback List, Tooltip offsets/background, ExpeditionMode Draw Lines To Encounters",
+            "Expedition draw" => "ExpeditionMode Window, ExpeditionMode Tooltip Overlay, Tooltip Best Reward Only, Tooltip Top 2 Only, Tooltip fixed list offsets/background, ExpeditionMode Draw Lines To Encounters",
             "Highlight draw" => "Highlight Most Valuable Reward, Highlight Rewards Above Value, Highlight Only Top 2 Picks, Highlight Only Rewards Above Value, Show Price On Reward, Draw Full Row, Frame Thickness/Colors",
             "Scan tick" => "Scan Interval plus Prices/check, UI reward scan and Flicker cache combined",
             "Render total" => "All enabled RuneHighlighter options active this frame",
@@ -942,11 +1642,30 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
         DrawIntSlider(Settings.PreviewOffsetX, "Pre-Open Preview Offset X");
         DrawIntSlider(Settings.PreviewOffsetY, "Pre-Open Preview Offset Y");
         DrawIntSlider(Settings.PreviewBackgroundOpacity, "Pre-Open Background Opacity");
+
+        ImGui.Separator();
+        ImGui.TextDisabled("Reroll Advisor settings are shared with ExpeditionMode.");
+        ImGui.TextDisabled("Configure them here once; ExpeditionMode uses the same values.");
+        DrawToggle(Settings.EnableRerollAdvisor, "Enable Reroll Advisor");
+        DrawToggle(Settings.RerollAdvisorShowTransferSlots, "Show Transfer Slots");
+        DrawToggle(Settings.RerollAdvisorUseRunePositionScore, "Use Cover Score");
+        DrawToggle(Settings.RerollAdvisorShowRuneScore, "Show Cover Score");
+        DrawToggle(Settings.RerollAdvisorShowWaveCoverageDetails, "Show Wave Coverage Details");
+        DrawToggle(Settings.RerollAdvisorProtectHighCoverage, "Protect High Coverage Runes");
+        DrawToggle(Settings.RerollAdvisorShowRollUsedStatus, "Show Roll Used Status");
+        DrawToggle(Settings.RerollAdvisorHideAfterRollUsed, "Hide After Roll Used");
+        DrawIntSlider(Settings.RerollAdvisorTransferBonusPercent, "Transfer Bonus %");
+        DrawIntSlider(Settings.RerollAdvisorRerollBelowValue, "Reroll Below Value");
+        DrawIntSlider(Settings.RerollAdvisorKeepValue, "Keep From Value");
+        DrawIntSlider(Settings.RerollAdvisorLockValue, "Lock From Value");
     }
 
 
     private void DrawExpeditionModeControls()
     {
+        // Migrate old configs where this hidden option may have been saved as false.
+        Settings.ExpeditionModeTooltipFallbackList.Value = true;
+
         DrawToggle(Settings.EnableExpeditionMode, "Enable ExpeditionMode Window");
         DrawToggle(Settings.EnableExpeditionModeTooltip, "Enable ExpeditionMode Tooltip Overlay");
         DrawToggle(Settings.ExpeditionModeTooltipBestOnly, "Tooltip Best Reward Only");
@@ -954,11 +1673,16 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
         DrawIntSlider(Settings.ExpeditionModeMaxRewardsPerEncounter, "Max Rewards Per Encounter");
         DrawIntSlider(Settings.ExpeditionModeMinimumValue, "Minimum Value");
         DrawToggle(Settings.ExpeditionModeShowZeroPriceRewards, "Show Zero Price / Unknown Rewards");
-        DrawToggle(Settings.ExpeditionModeTooltipFallbackList, "Tooltip Fallback List");
-        DrawIntSlider(Settings.ExpeditionModeTooltipFallbackX, "Tooltip Fallback X");
-        DrawIntSlider(Settings.ExpeditionModeTooltipFallbackY, "Tooltip Fallback Y");
-        DrawIntSlider(Settings.ExpeditionModeTooltipBackgroundOpacity, "Tooltip Fallback Background Opacity");
+        ImGui.TextDisabled("ExpeditionMode tooltip is always rendered as a fixed on-screen list.");
+        ImGui.TextDisabled("Near-rune previews/highlights are controlled only by Pre-Open Preview.");
+        DrawIntSlider(Settings.ExpeditionModeTooltipFallbackX, "Tooltip List X");
+        DrawIntSlider(Settings.ExpeditionModeTooltipFallbackY, "Tooltip List Y");
+        DrawIntSlider(Settings.ExpeditionModeTooltipBackgroundOpacity, "Tooltip List Background Opacity");
         DrawColor(Settings.ExpeditionModeHeaderColor, "Expedition Header Color");
+
+        ImGui.Separator();
+        ImGui.TextDisabled("Reroll Advisor settings are configured in Pre-Open Preview.");
+        ImGui.TextDisabled("Those settings also apply to ExpeditionMode.");
 
         ImGui.Separator();
         DrawToggle(Settings.ExpeditionModeDrawLinesToEncounters, "Draw Lines To Encounters");
@@ -966,7 +1690,7 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
         DrawIntSlider(Settings.ExpeditionModeLineThickness, "Line Thickness");
         DrawIntSlider(Settings.ExpeditionModeLineOffscreenMargin, "Line Offscreen Margin");
 
-        ImGui.TextDisabled("Window lists all encounters. Tooltip fallback controls position the on-screen list and BEST PICK line.");
+        ImGui.TextDisabled("Window lists all encounters. Tooltip List X/Y controls the fixed left-side overlay and BEST PICK line.");
         ImGui.Text($"Detected encounters: {cachedExpeditionModeEntries.Count}");
     }
 
@@ -1010,6 +1734,11 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
         DrawIntSlider(Settings.ProfilerTextLogIntervalMs, "Profiler TXT Log Interval (ms)");
         DrawIntSlider(Settings.SpikeProfilerWarnMs, "Spike Profiler Warn Ms");
         ImGui.TextWrapped($"Profiler TXT: {GetProfilerLogPath()}");
+        DrawToggle(Settings.RerollDebugLogEncounterChanges, "Reroll Debug: Log Encounter Changes");
+        DrawToggle(Settings.RerollDebugDeepDump, "Reroll Debug: Deep Object Dump");
+        DrawToggle(Settings.RerollDebugClearLogOnStart, "Reroll Debug: Clear Log On Start");
+        DrawIntSlider(Settings.RerollDebugMaxSnapshots, "Reroll Debug: Max Snapshots");
+        ImGui.TextWrapped($"Reroll Debug TXT: {GetRerollDebugLogPath()}");
 
         DrawIntSlider(Settings.ScanIntervalMs, "Scan Interval (ms)");
         DrawLeagueInput();
@@ -1047,6 +1776,8 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
         ImGui.Text($"Pre-Open Preview Cache UTC: {(lastPreOpenPreviewCacheTime == DateTime.MinValue ? "never" : lastPreOpenPreviewCacheTime.ToString("u"))}");
         ImGui.Text($"Downloaded Categories: {lastDownloadedCategories}, Failed Categories: {lastFailedCategories}");
         ImGui.TextWrapped($"Cache File: {GetPriceCachePath()}");
+        ImGui.TextWrapped($"Reroll Debug File: {GetRerollDebugLogPath()}");
+        ImGui.Text($"Reroll Debug Snapshots This Session: {rerollDebugSnapshotCount}");
         ImGui.Text($"Exalted Orb Raw Value: {(exaltedOrbRawValue <= 0 ? "unknown" : exaltedOrbRawValue.ToString("0.####"))}");
         ImGui.Text($"Divine Orb Raw Value: {(divineOrbRawValue <= 0 ? "unknown - use Force Refresh Prices Now after enabling Divine mode" : divineOrbRawValue.ToString("0.####"))}");
         var cacheAge = GetPriceCacheAge();
@@ -1642,6 +2373,8 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
                     continue;
 
                 var rawEntries = GetOrBuildPreOpenPreviewEntries(encounterLabel, entity, areaLevel, allRecipes, runeWeights, previewNow);
+                var rawAdvice = BuildRerollAdvice(entity, encounterLabel, rawEntries, allRecipes, areaLevel);
+                MaybeWriteRerollDebugSnapshot("PreOpen", entity, encounterLabel, rawEntries, rawAdvice, areaLevel);
                 if (rawEntries.Count == 0)
                     continue;
 
@@ -1678,7 +2411,8 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
                 {
                     EncounterLabel = encounterLabel,
                     FallbackPosition = rawBottomLeft,
-                    Entries = entries
+                    Entries = entries,
+                    Advice = rawAdvice
                 });
             }
 
@@ -1715,6 +2449,21 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
             Settings.PreviewMinimumValue.Value,
             Settings.MinimumValueToHighlight.Value,
             Settings.PreviewMaxLines.Value,
+            Settings.EnableRerollAdvisor.Value,
+            Settings.RerollAdvisorRerollBelowValue.Value,
+            Settings.RerollAdvisorKeepValue.Value,
+            Settings.RerollAdvisorLockValue.Value,
+            Settings.RerollAdvisorShowTransferSlots.Value,
+            Settings.RerollAdvisorUseRunePositionScore.Value,
+            Settings.RerollAdvisorShowRuneScore.Value,
+            Settings.RerollAdvisorShowWaveCoverageDetails.Value,
+            Settings.RerollAdvisorProtectHighCoverage.Value,
+            Settings.RerollAdvisorShowRollUsedStatus.Value,
+            Settings.RerollAdvisorHideAfterRollUsed.Value,
+            Settings.RerollAdvisorTransferBonusPercent.Value,
+            Settings.RerollDebugLogEncounterChanges.Value,
+            Settings.RerollDebugDeepDump.Value,
+            Settings.RerollDebugMaxSnapshots.Value,
             lastPriceRefreshUtc.Ticks);
     }
 
@@ -1795,8 +2544,832 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
             ReadEncounterDataRuneCount(data),
             ReadEncounterDataFixedRunePosition(data),
             BuildRuneSignature(ReadEncounterDataFixedRune(data)),
+            IsEncounterRerollUsed(data) ? "used" : "unused",
             selectedRecipeId,
             passedOn);
+    }
+
+    private static bool TryReadBoolMember(object? value, string memberName, out bool result)
+    {
+        result = false;
+        if (value == null)
+            return false;
+
+        try
+        {
+            var type = value.GetType();
+            var prop = type.GetProperty(memberName, BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase);
+            var memberValue = prop?.GetValue(value);
+
+            if (memberValue == null)
+            {
+                var field = type.GetField(memberName, BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase);
+                memberValue = field?.GetValue(value);
+            }
+
+            if (memberValue is bool b)
+            {
+                result = b;
+                return true;
+            }
+
+            if (memberValue == null)
+                return false;
+
+            var text = Convert.ToString(memberValue, CultureInfo.InvariantCulture);
+            return bool.TryParse(text, out result);
+        }
+        catch
+        {
+            result = false;
+            return false;
+        }
+    }
+
+    private static bool TryReadIntMember(object? value, string memberName, out int result)
+    {
+        result = 0;
+        if (value == null)
+            return false;
+
+        try
+        {
+            var memberValue = TryReadObjectMember(value, memberName);
+            if (memberValue == null)
+                return false;
+
+            switch (memberValue)
+            {
+                case int i:
+                    result = i;
+                    return true;
+                case long l when l >= int.MinValue && l <= int.MaxValue:
+                    result = (int)l;
+                    return true;
+                case uint ui when ui <= int.MaxValue:
+                    result = (int)ui;
+                    return true;
+                case short s:
+                    result = s;
+                    return true;
+                case byte b:
+                    result = b;
+                    return true;
+                case bool b:
+                    result = b ? 1 : 0;
+                    return true;
+            }
+
+            var text = Convert.ToString(memberValue, CultureInfo.InvariantCulture);
+            if (int.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out result))
+                return true;
+        }
+        catch
+        {
+            result = 0;
+        }
+
+        return false;
+    }
+
+    private static bool IsEncounterRerollUsed(Expedition2EncounterData? data, Expedition2EncounterLabel? encounterLabel = null)
+    {
+        return IsRerollUsedFromObject(data) || IsRerollUsedFromObject(encounterLabel);
+    }
+
+    private static bool IsRerollUsedFromObject(object? value)
+    {
+        if (value == null)
+            return false;
+
+        // ExileCore/PoE memory names have changed between builds. Check a compact list of
+        // likely state flags instead of relying only on Data.IsRerolled.
+        foreach (var memberName in new[]
+                 {
+                     "IsRerolled", "Rerolled", "WasRerolled", "HasRerolled", "HasBeenRerolled",
+                     "RerollUsed", "UsedReroll", "RollUsed", "IsRollUsed", "WasRolled",
+                     "ScrollUsed", "CurrencyUsed", "IsModified"
+                 })
+        {
+            if (TryReadBoolMember(value, memberName, out var flag) && flag)
+                return true;
+        }
+
+        foreach (var memberName in new[] { "RerollCount", "RerollsUsed", "RollsUsed", "RerollAttempts", "RollAttempts" })
+        {
+            if (TryReadIntMember(value, memberName, out var count) && count > 0)
+                return true;
+        }
+
+        foreach (var memberName in new[] { "RemainingRerolls", "RerollsRemaining", "RollsRemaining", "AvailableRerolls", "RerollsAvailable" })
+        {
+            if (TryReadIntMember(value, memberName, out var remaining) && remaining <= 0)
+                return true;
+        }
+
+        foreach (var memberName in new[] { "CanReroll", "CanBeRerolled", "IsRerollAvailable", "CanRoll" })
+        {
+            if (TryReadBoolMember(value, memberName, out var canReroll) && !canReroll)
+                return true;
+        }
+
+        return false;
+    }
+
+    private bool IsEncounterRerollUsedByObservedState(
+        Entity? entity,
+        Expedition2EncounterLabel? encounterLabel,
+        Expedition2EncounterData? data,
+        IReadOnlyList<PreOpenPreviewEntry> entries)
+    {
+        if (encounterLabel == null)
+            return false;
+
+        var now = DateTime.UtcNow;
+        PruneObservedRerollStates(now);
+
+        var key = BuildObservedRerollStableKey(entity, encounterLabel);
+        if (string.IsNullOrWhiteSpace(key))
+            return false;
+
+        var signature = BuildObservedRerollContentSignature(encounterLabel, data, entries);
+        if (string.IsNullOrWhiteSpace(signature))
+            return false;
+
+        if (!observedRerollStateByKey.TryGetValue(key, out var state))
+        {
+            state = new ObservedRerollState
+            {
+                BaselineSignature = signature,
+                LastSignature = signature,
+                FirstSeenUtc = now,
+                LastSeenUtc = now,
+                SeenCount = 1
+            };
+            observedRerollStateByKey[key] = state;
+            return false;
+        }
+
+        state.LastSeenUtc = now;
+        state.SeenCount++;
+
+        if (!string.Equals(state.BaselineSignature, signature, StringComparison.Ordinal))
+        {
+            var baselineAgeMs = (now - state.FirstSeenUtc).TotalMilliseconds;
+
+            if (!state.UsedByObservedStateChange &&
+                (baselineAgeMs < ObservedRerollStateStabilizeMs || state.SeenCount < 2))
+            {
+                // Let ExileCore/PoE settle lazy recipe fields after the label first appears.
+                // A real currency reroll happens after a previously stable visible state changes.
+                state.BaselineSignature = signature;
+                state.FirstSeenUtc = now;
+                state.SeenCount = 1;
+                state.LastSignature = signature;
+                return false;
+            }
+
+            state.UsedByObservedStateChange = true;
+        }
+
+        state.LastSignature = signature;
+        return state.UsedByObservedStateChange;
+    }
+
+    private void PruneObservedRerollStates(DateTime now)
+    {
+        if (now - lastObservedRerollStatePruneUtc < TimeSpan.FromSeconds(20))
+            return;
+
+        lastObservedRerollStatePruneUtc = now;
+        if (observedRerollStateByKey.Count == 0)
+            return;
+
+        var removeBefore = now - ObservedRerollStateKeepAlive;
+        var deadKeys = observedRerollStateByKey
+            .Where(x => x.Value.LastSeenUtc < removeBefore)
+            .Select(x => x.Key)
+            .ToList();
+
+        foreach (var deadKey in deadKeys)
+            observedRerollStateByKey.Remove(deadKey);
+    }
+
+    private static string BuildObservedRerollStableKey(Entity? entity, Expedition2EncounterLabel encounterLabel)
+    {
+        try
+        {
+            if (entity != null)
+            {
+                var entityId = entity.Id;
+                if (entityId != 0)
+                    return $"entity:{entityId}:grid:{entity.GridPos.X}:{entity.GridPos.Y}";
+
+                return $"grid:{entity.GridPos.X}:{entity.GridPos.Y}";
+            }
+        }
+        catch
+        {
+        }
+
+        var identity = TryReadStableObjectIdentity(encounterLabel);
+        if (!string.IsNullOrWhiteSpace(identity))
+            return "label:" + identity;
+
+        return "label-object:" + BuildStableObjectKey(encounterLabel);
+    }
+
+    private string BuildObservedRerollContentSignature(
+        Expedition2EncounterLabel encounterLabel,
+        Expedition2EncounterData? data,
+        IReadOnlyList<PreOpenPreviewEntry> entries)
+    {
+        var selectedRecipe = ReadEncounterDataSelectedRecipe(data);
+        var selectedRunes = ReadRecipeRunes(selectedRecipe);
+        var passedOn = ReadPassedOnRunePositions(data);
+        var rewardSignature = string.Empty;
+
+        if (entries != null && entries.Count > 0)
+        {
+            rewardSignature = string.Join(";", entries
+                .OrderByDescending(x => x.Value)
+                .ThenBy(x => x.Name, StringComparer.OrdinalIgnoreCase)
+                .Take(8)
+                .Select(x => $"{x.Count}x{CleanupText(x.Name)}"));
+        }
+
+        var selectedRecipeReward = string.Empty;
+        if (selectedRecipe != null)
+        {
+            try
+            {
+                var entry = ToPreOpenEntry(selectedRecipe);
+                if (entry != null)
+                    selectedRecipeReward = $"{entry.Count}x{CleanupText(entry.Name)}";
+            }
+            catch
+            {
+            }
+        }
+
+        var runeSignature = selectedRunes.Count == 0
+            ? string.Empty
+            : string.Join(",", selectedRunes.Select(BuildRuneSignature));
+
+        var selectedRecipeId = string.Empty;
+        try
+        {
+            selectedRecipeId = selectedRecipe?.Id ?? string.Empty;
+        }
+        catch
+        {
+        }
+
+        if (string.IsNullOrWhiteSpace(selectedRecipeId) &&
+            string.IsNullOrWhiteSpace(selectedRecipeReward) &&
+            string.IsNullOrWhiteSpace(runeSignature) &&
+            string.IsNullOrWhiteSpace(rewardSignature))
+        {
+            return string.Empty;
+        }
+
+        var contentSignature = string.Join("|",
+            SafeValueToString(selectedRecipeId),
+            selectedRecipeReward,
+            runeSignature,
+            ReadEncounterDataRuneCount(data),
+            ReadEncounterDataFixedRunePosition(data),
+            BuildRuneSignature(ReadEncounterDataFixedRune(data)),
+            SafeRead(() => encounterLabel.RuneCount),
+            SafeRead(() => encounterLabel.FixedRunePosition),
+            BuildRuneSignature(SafeRead(() => encounterLabel.FixedRune)),
+            passedOn.Count == 0 ? string.Empty : string.Join(",", passedOn),
+            rewardSignature);
+
+        return CleanupText(contentSignature);
+    }
+
+    private static List<int> ReadPassedOnRunePositions(Expedition2EncounterData? data)
+    {
+        try
+        {
+            if (data?.PassedOnRunePositions == null || data.PassedOnRunePositions.Count == 0)
+                return new List<int>();
+
+            return data.PassedOnRunePositions
+                .Select(x => Convert.ToInt32(x, CultureInfo.InvariantCulture))
+                .Where(x => x >= 0 && x <= MaxReasonableExpeditionRuneSockets)
+                .Distinct()
+                .OrderBy(x => x)
+                .ToList();
+        }
+        catch
+        {
+            return new List<int>();
+        }
+    }
+
+    private string BuildTransferSlotText(Expedition2EncounterData? data)
+    {
+        if (!Settings.RerollAdvisorShowTransferSlots.Value)
+            return string.Empty;
+
+        var positions = ReadPassedOnRunePositions(data);
+        if (positions.Count == 0)
+            return string.Empty;
+
+        return "T:" + string.Join(",", positions.Select(x => (x + 1).ToString(CultureInfo.InvariantCulture)));
+    }
+
+    private RerollAdvice BuildRerollAdvice(
+        Entity? entity,
+        Expedition2EncounterLabel? encounterLabel,
+        IReadOnlyList<PreOpenPreviewEntry> entries,
+        IReadOnlyList<Expedition2Recipe> allRecipes,
+        int areaLevel)
+    {
+        if (!Settings.EnableRerollAdvisor.Value)
+            return EmptyRerollAdvice;
+
+        var bestValue = entries.Count > 0 ? entries.Max(x => x.Value) : 0;
+        var data = TryGetEncounterData(encounterLabel);
+        var rollUsed = IsEncounterRerollUsed(data, encounterLabel) ||
+                       IsEncounterRerollUsedByObservedState(entity, encounterLabel, data, entries);
+
+        if (rollUsed)
+        {
+            if (Settings.RerollAdvisorHideAfterRollUsed.Value || !Settings.RerollAdvisorShowRollUsedStatus.Value)
+                return EmptyRerollAdvice;
+
+            return new RerollAdvice
+            {
+                Text = "ROLL: USED",
+                Color = Color.LightGray
+            };
+        }
+
+        var transferText = BuildTransferSlotText(data);
+        var coverInsight = BuildRunePositionInsight(data, allRecipes, areaLevel);
+
+        var rerollBelow = Math.Max(0, Settings.RerollAdvisorRerollBelowValue.Value);
+        var keepFrom = Math.Max(rerollBelow, Settings.RerollAdvisorKeepValue.Value);
+        var lockFrom = Math.Max(keepFrom, Settings.RerollAdvisorLockValue.Value);
+
+        var decision = DecideReroll(bestValue, coverInsight, rerollBelow, keepFrom, lockFrom);
+        var text = "ROLL: " + decision.Text;
+
+        if (coverInsight.HasText)
+            text += " | " + coverInsight.Text;
+
+        if (!string.IsNullOrWhiteSpace(transferText))
+            text += " | " + transferText;
+
+        return new RerollAdvice
+        {
+            Text = text,
+            Color = decision.Color
+        };
+    }
+
+    private (string Text, Color Color) DecideReroll(
+        double bestValue,
+        RunePositionInsight coverInsight,
+        double rerollBelow,
+        double keepFrom,
+        double lockFrom)
+    {
+        var protectCoverage = Settings.RerollAdvisorProtectHighCoverage.Value;
+        var hardRollBelow = Math.Max(1.0, rerollBelow * 0.25);
+
+        if (bestValue <= 0 && !coverInsight.HasCoverData)
+            return ("WAIT", Color.LightGray);
+
+        if (bestValue >= lockFrom)
+            return ("NO/LOCK", Settings.TopPickColor.Value);
+
+        if (bestValue >= keepFrom)
+            return (coverInsight.IsHighCover ? "NO/LOCK" : "NO/KEEP", Color.Lime);
+
+        if (protectCoverage && coverInsight.IsHighCover)
+        {
+            // A high-value rune that is active in many monster waves is a real opportunity cost.
+            // Do not show a confident ROLL YES even when the direct reward price is below threshold.
+            return (bestValue <= rerollBelow ? "MAYBE/RISK" : "NO/KEEP", Color.Yellow);
+        }
+
+        if (protectCoverage && coverInsight.IsMidCover)
+        {
+            if (bestValue <= hardRollBelow)
+                return ("MAYBE/RISK", Color.Yellow);
+
+            return bestValue <= rerollBelow
+                ? ("MAYBE", Color.Yellow)
+                : ("NO/KEEP", Color.Lime);
+        }
+
+        if (bestValue <= hardRollBelow)
+            return ("YES", Color.Orange);
+
+        if (bestValue <= rerollBelow)
+            return ("YES", Color.Orange);
+
+        return ("MAYBE", Color.Yellow);
+    }
+
+    private RunePositionInsight BuildRunePositionInsight(
+        Expedition2EncounterData? data,
+        IReadOnlyList<Expedition2Recipe> allRecipes,
+        int areaLevel)
+    {
+        if (!Settings.RerollAdvisorUseRunePositionScore.Value)
+            return EmptyRunePositionInsight;
+
+        var transferSlots = new HashSet<int>(ReadPassedOnRunePositions(data));
+        var selectedRecipe = ReadEncounterDataSelectedRecipe(data);
+        var selectedRunes = ReadRecipeRunes(selectedRecipe);
+        var runeCount = ReadEncounterDataRuneCount(data);
+
+        if (runeCount <= 0)
+            runeCount = selectedRecipe != null ? GetRecipeRuneCount(selectedRecipe, selectedRunes.Count) : 0;
+
+        if (runeCount <= 0)
+            runeCount = selectedRunes.Count;
+
+        var candidates = new List<RuneCoverageCandidate>(selectedRunes.Count + 1);
+
+        // Monster waves receive rune prefixes from left to right. Duplicates do not stack, so later
+        // copies of the same rune are only relevant if they are the stronger effective occurrence.
+        if (selectedRunes.Count > 0 && runeCount > 0)
+        {
+            for (var i = 0; i < selectedRunes.Count; i++)
+                AddRuneCoverageCandidate(candidates, selectedRunes[i], i, Math.Max(runeCount, selectedRunes.Count), transferSlots);
+        }
+
+        if (candidates.Count == 0)
+        {
+            var fixedRune = ReadEncounterDataFixedRune(data);
+            var fixedRunePosition = ReadEncounterDataFixedRunePosition(data);
+            if (fixedRunePosition >= 0 && runeCount > 0)
+                AddRuneCoverageCandidate(candidates, fixedRune, fixedRunePosition, runeCount, transferSlots);
+        }
+
+        if (candidates.Count == 0)
+            return BuildCoverageInsight("LOW", Color.Orange, 0, 0, 0, true);
+
+        var duplicateIgnoredCount = 0;
+        var strongestByRune = new Dictionary<string, RuneCoverageCandidate>(StringComparer.OrdinalIgnoreCase);
+        foreach (var candidate in candidates)
+        {
+            if (string.IsNullOrWhiteSpace(candidate.Signature))
+                continue;
+
+            if (strongestByRune.TryGetValue(candidate.Signature, out var existing))
+            {
+                duplicateIgnoredCount++;
+                if (candidate.ScoreValue > existing.ScoreValue)
+                    strongestByRune[candidate.Signature] = candidate;
+            }
+            else
+            {
+                strongestByRune[candidate.Signature] = candidate;
+            }
+        }
+
+        if (strongestByRune.Count == 0)
+            return BuildCoverageInsight("LOW", Color.Orange, 0, 0, 0, true);
+
+        var ordered = strongestByRune.Values
+            .OrderByDescending(x => x.ScoreValue)
+            .ThenBy(x => x.Slot)
+            .ToList();
+
+        var best = ordered[0];
+        var aggregateScore = best.ScoreValue + ordered.Skip(1).Take(2).Sum(x => x.ScoreValue * 0.35);
+        var graded = GradeCoverageScore(best, aggregateScore);
+
+        return BuildCoverageInsight(
+            graded.Grade,
+            graded.Color,
+            best.ScoreValue,
+            best.Slot,
+            best.SlotWeight,
+            true,
+            best.Signature,
+            best.ActiveWaves,
+            best.TotalWaves,
+            aggregateScore,
+            ordered.Count,
+            duplicateIgnoredCount);
+    }
+
+    private void AddRuneCoverageCandidate(
+        List<RuneCoverageCandidate> candidates,
+        object? rune,
+        int zeroBasedSlot,
+        int runeCount,
+        HashSet<int> transferSlots)
+    {
+        var signature = BuildRuneSignature(rune);
+        var baseValue = GetRuneCoverageBaseScore(signature);
+        if (string.IsNullOrWhiteSpace(signature) || baseValue <= 0 || runeCount <= 0)
+            return;
+
+        var slotWeight = GetRuneSlotWaveWeight(zeroBasedSlot, runeCount);
+        var activeWaves = GetRuneSlotActiveWaveCount(zeroBasedSlot, runeCount);
+        var totalWaves = GetRuneTotalWaveCount(runeCount);
+        var isTransferred = transferSlots.Contains(zeroBasedSlot);
+
+        if (isTransferred)
+            slotWeight *= 1.0 + (Math.Max(0, Settings.RerollAdvisorTransferBonusPercent.Value) / 100.0);
+
+        slotWeight = Math.Min(1.5, Math.Max(0.05, slotWeight));
+
+        candidates.Add(new RuneCoverageCandidate
+        {
+            Signature = signature,
+            Slot = zeroBasedSlot + 1,
+            ActiveWaves = activeWaves,
+            TotalWaves = totalWaves,
+            SlotWeight = slotWeight,
+            BaseValue = baseValue,
+            ScoreValue = baseValue * slotWeight,
+            IsTransferred = isTransferred
+        });
+    }
+
+    private RunePositionInsight BuildCoverageInsight(
+        string grade,
+        Color color,
+        double scoreValue,
+        int slot,
+        double slotWeight,
+        bool hasCoverData,
+        string primaryRune = "",
+        int activeWaves = 0,
+        int totalWaves = 0,
+        double aggregateScore = 0,
+        int uniqueValuableRuneCount = 0,
+        int duplicateIgnoredCount = 0)
+    {
+        var normalizedGrade = string.IsNullOrWhiteSpace(grade) ? "NONE" : grade.ToUpperInvariant();
+        var text = Settings.RerollAdvisorShowRuneScore.Value
+            ? $"COVER: {normalizedGrade}"
+            : string.Empty;
+
+        if (Settings.RerollAdvisorShowWaveCoverageDetails.Value && !string.IsNullOrWhiteSpace(primaryRune) && slot > 0)
+        {
+            var runeLabel = ToCompactRuneLabel(primaryRune);
+            var waveText = totalWaves > 0 ? $" {activeWaves}/{totalWaves}" : string.Empty;
+            text += (text.Length > 0 ? " " : string.Empty) + $"{runeLabel} S{slot}{waveText}";
+        }
+
+        if (Settings.RerollAdvisorShowWaveCoverageDetails.Value && duplicateIgnoredCount > 0)
+            text += $" dup-{duplicateIgnoredCount}";
+
+        if (Settings.RerollAdvisorShowRuneScore.Value && aggregateScore > 0 && Settings.DebugStats.Value)
+            text += " " + FormatRewardValue(aggregateScore);
+
+        return new RunePositionInsight
+        {
+            Text = text,
+            Color = color,
+            ScoreValue = scoreValue,
+            AggregateScore = aggregateScore,
+            Slot = slot,
+            SlotWeight = slotWeight,
+            Grade = normalizedGrade,
+            PrimaryRune = primaryRune,
+            ActiveWaves = activeWaves,
+            TotalWaves = totalWaves,
+            UniqueValuableRuneCount = uniqueValuableRuneCount,
+            DuplicateIgnoredCount = duplicateIgnoredCount,
+            HasCoverData = hasCoverData,
+            IsHighCover = string.Equals(normalizedGrade, "HIGH", StringComparison.OrdinalIgnoreCase),
+            IsMidCover = string.Equals(normalizedGrade, "MID", StringComparison.OrdinalIgnoreCase),
+            IsLowCover = string.Equals(normalizedGrade, "LOW", StringComparison.OrdinalIgnoreCase)
+        };
+    }
+
+    private static string ToCompactRuneLabel(string signature)
+    {
+        signature = CleanupText(signature);
+        if (string.IsNullOrWhiteSpace(signature))
+            return string.Empty;
+
+        return signature.Length <= 12
+            ? signature.ToUpperInvariant()
+            : signature[..12].ToUpperInvariant();
+    }
+
+    private Dictionary<string, RuneEconomicScore> BuildRuneEconomicScores(IReadOnlyList<Expedition2Recipe> allRecipes, int areaLevel)
+    {
+        var signature = BuildRuneEconomicScoreCacheSignature(areaLevel);
+        if (string.Equals(signature, cachedRuneEconomicScoreSignature, StringComparison.Ordinal) && cachedRuneEconomicScores.Count > 0)
+            return cachedRuneEconomicScores;
+
+        cachedRuneEconomicScores.Clear();
+        cachedRuneEconomicScoreSignature = signature;
+
+        foreach (var recipe in allRecipes)
+        {
+            if (recipe == null)
+                continue;
+
+            if (recipe.MinLevelReq > areaLevel || recipe.MaxLevelReq < areaLevel)
+                continue;
+
+            var entry = ToPreOpenEntry(recipe);
+            if (entry == null || entry.Value <= 0)
+                continue;
+
+            var runes = ReadRecipeRunes(recipe);
+            if (runes.Count == 0)
+                continue;
+
+            var runeCount = GetRecipeRuneCount(recipe, runes.Count);
+            var seenInRecipe = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            for (var i = 0; i < runes.Count; i++)
+            {
+                var signatureKey = BuildRuneSignature(runes[i]);
+                if (string.IsNullOrWhiteSpace(signatureKey) || !seenInRecipe.Add(signatureKey))
+                    continue;
+
+                if (!cachedRuneEconomicScores.TryGetValue(signatureKey, out var score))
+                {
+                    score = new RuneEconomicScore { Signature = signatureKey };
+                    cachedRuneEconomicScores[signatureKey] = score;
+                }
+
+                var slotWeight = GetRuneSlotWaveWeight(i, runeCount);
+                score.SeenCount++;
+                score.TotalValue += entry.Value;
+                score.TotalWeightedValue += entry.Value * slotWeight;
+                score.MaxValue = Math.Max(score.MaxValue, entry.Value);
+                score.WeightedMaxValue = Math.Max(score.WeightedMaxValue, entry.Value * slotWeight);
+            }
+        }
+
+        return cachedRuneEconomicScores;
+    }
+
+    private string BuildRuneEconomicScoreCacheSignature(int areaLevel)
+    {
+        return string.Join("|",
+            areaLevel,
+            GetPriceDisplayUnitKey(),
+            rawPriceCache.Count,
+            priceCache.Count,
+            lastPriceRefreshUtc.Ticks,
+            Settings.RerollAdvisorRerollBelowValue.Value,
+            Settings.RerollAdvisorKeepValue.Value,
+            Settings.RerollAdvisorLockValue.Value);
+    }
+
+    private static double GetEffectiveRuneEconomicValue(RuneEconomicScore score)
+    {
+        if (score.SeenCount <= 0)
+            return 0;
+
+        var average = Math.Max(score.AverageValue, score.AverageWeightedValue);
+        if (average <= 0)
+            return 0;
+
+        // Keep a single jackpot recipe from making every occurrence of that rune look great.
+        var cappedMax = Math.Min(score.MaxValue, average * 3.0);
+        return Math.Max(average, cappedMax);
+    }
+
+    private static double GetRuneCoverageBaseScore(string runeSignature)
+    {
+        if (string.IsNullOrWhiteSpace(runeSignature))
+            return 0;
+
+        // Coverage score is intentionally conservative. It tracks runes that are expected to matter
+        // when propagated across monster waves. Blue filler/combat runes are left at 0.
+        return runeSignature.Trim().ToLowerInvariant() switch
+        {
+            // Propagation / loot-oriented runes.
+            "opulent" => 100,
+            "bait" => 90,
+
+            // Strong multiplier runes. Good early, but not enough to call a late slot HIGH.
+            "power" => 80,
+            "time" => 75,
+            "soul" => 72,
+            "death" => 70,
+            "life" => 68,
+            "bond" => 65,
+            "oath" => 65,
+
+            // Useful but not a primary keep reason by itself.
+            "wisdom" => 45,
+            _ => 0
+        };
+    }
+
+    private (string Grade, Color Color) GradeCoverageScore(RuneCoverageCandidate best, double aggregateScore)
+    {
+        if (best.ScoreValue <= 0 || best.BaseValue <= 0)
+            return ("LOW", Color.Orange);
+
+        // HIGH means an actually valuable rune is active early/broadly enough to matter across monster waves.
+        // Opulent/Bait early can be HIGH. A jackpot recipe association no longer affects this grade.
+        if ((best.BaseValue >= 90 && best.SlotWeight >= 0.70) || (best.BaseValue >= 75 && best.SlotWeight >= 0.90))
+            return ("HIGH", Color.Lime);
+
+        // Multiple good unique runes can make an otherwise medium row risky to reroll, but not every late
+        // single rune should be protected. Duplicates are removed before aggregate scoring.
+        if ((best.BaseValue >= 65 && best.SlotWeight >= 0.45) ||
+            (best.BaseValue >= 90 && best.SlotWeight >= 0.30) ||
+            (best.BaseValue >= 45 && best.SlotWeight >= 0.90) ||
+            aggregateScore >= 85)
+            return ("MID", Color.Yellow);
+
+        return ("LOW", Color.Orange);
+    }
+
+    private static Expedition2Recipe? ReadEncounterDataSelectedRecipe(Expedition2EncounterData? data)
+    {
+        try
+        {
+            return data?.SelectedRecipe;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static List<object> ReadRecipeRunes(Expedition2Recipe? recipe)
+    {
+        var result = new List<object>();
+        if (recipe == null)
+            return result;
+
+        try
+        {
+            if (recipe.Runes is IEnumerable enumerable)
+            {
+                foreach (var rune in enumerable)
+                {
+                    if (rune != null)
+                        result.Add(rune);
+                }
+            }
+        }
+        catch
+        {
+        }
+
+        return result;
+    }
+
+    private static int GetRecipeRuneCount(Expedition2Recipe recipe, int fallback)
+    {
+        try
+        {
+            var count = recipe.RuneCountRequired;
+            if (count > 0 && count <= MaxReasonableExpeditionRuneSockets)
+                return count;
+        }
+        catch
+        {
+        }
+
+        return Math.Max(0, fallback);
+    }
+
+    private static double GetRuneSlotWaveWeight(int zeroBasedSlot, int runeCount)
+    {
+        var totalWaves = GetRuneTotalWaveCount(runeCount);
+        if (totalWaves <= 0)
+            return 1.0;
+
+        var activeWaves = GetRuneSlotActiveWaveCount(zeroBasedSlot, runeCount);
+        return Math.Clamp(activeWaves / (double)totalWaves, 0.05, 1.0);
+    }
+
+    private static int GetRuneTotalWaveCount(int runeCount)
+    {
+        if (runeCount <= 1)
+            return 1;
+
+        return Math.Max(1, runeCount - 1);
+    }
+
+    private static int GetRuneSlotActiveWaveCount(int zeroBasedSlot, int runeCount)
+    {
+        var totalWaves = GetRuneTotalWaveCount(runeCount);
+        if (runeCount <= 1)
+            return totalWaves;
+
+        // Expedition monster waves get one extra left-to-right rune each wave:
+        // wave 1 receives slots 1-2, wave 2 receives 1-3, etc. Therefore slots 1 and 2
+        // are active for every wave, while later slots cover progressively fewer waves.
+        return zeroBasedSlot <= 1
+            ? totalWaves
+            : Math.Clamp(runeCount - zeroBasedSlot, 1, totalWaves);
     }
 
     private static string BuildRuneSignature(object? rune)
@@ -1861,9 +3434,7 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
         IEnumerable<dynamic> runeWeights,
         DateTime now)
     {
-        // Podgląd jest liczony bez trwałego cache recepty. Po Liquid Versinium / Alloy
-        // dane encountera potrafią zmienić się szybciej niż pola labela, a stary cache przyklejał
-        // błędne top rewardy. Dlatego pre-open liczymy live z danych encountera.
+        // Pre-open preview is calculated from the current encounter state to avoid stale reward data after rerolls.
         var effectiveRuneCount = GetEffectiveEncounterRuneCount(encounterLabel, entity);
         return BuildBestPreOpenPreviewEntries(encounterLabel, effectiveRuneCount, areaLevel, allRecipes, runeWeights);
     }
@@ -1884,13 +3455,10 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
     {
         var data = TryGetEncounterData(encounterLabel);
 
-        // Główna poprawka: liczymy z aktualnych danych encountera,
-        // a nie z encounterLabel.FixedRune / RuneCount ani z samego socket count ze state machine.
-        // Po Liquid Versinium / Alloy pola labela potrafią zostać stare.
+        // Current encounter data is the safest source for runes after rerolls.
         var result = BuildEncounterDataPreviewEntries(data, areaLevel, allRecipes, runeWeights);
 
-        // Awaryjny fallback tylko dla bardzo starych/niezhydratowanych labeli: strict position z labela.
-        // Bez AnyRunePosition i bez NoRuneFilter, bo one powodowały fałszywe Perfect Orby.
+        // Fallback for labels that do not expose current encounter data yet.
         if (result.Count == 0 && data == null)
         {
             var allowedRuneCounts = BuildAllowedRuneCounts(encounterLabel, areaLevel, runeWeights);
@@ -1919,7 +3487,33 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
         var fixedRunePosition = ReadEncounterDataFixedRunePosition(data);
         var fixedRune = ReadEncounterDataFixedRune(data);
 
-        if (data == null || runeCount <= 0 || fixedRunePosition < 0 || fixedRune == null)
+        if (data == null)
+            return rawEntries;
+
+        // If the game exposes the current selected recipe, prefer it. This makes Pre-Open and
+        // ExpeditionMode advice exact instead of showing the best theoretical recipe that merely
+        // shares the fixed rune/slot.
+        var selectedRecipe = ReadEncounterDataSelectedRecipe(data);
+        if (selectedRecipe != null)
+        {
+            try
+            {
+                if (selectedRecipe.MinLevelReq <= areaLevel && selectedRecipe.MaxLevelReq >= areaLevel)
+                {
+                    var selectedEntry = ToPreOpenEntry(selectedRecipe);
+                    if (selectedEntry != null)
+                    {
+                        rawEntries.Add(selectedEntry);
+                        return rawEntries;
+                    }
+                }
+            }
+            catch
+            {
+            }
+        }
+
+        if (runeCount <= 0 || fixedRunePosition < 0 || fixedRune == null)
             return rawEntries;
 
         var allowedRuneCounts = BuildAllowedRuneCounts(data, areaLevel, runeWeights);
@@ -2358,14 +3952,21 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
 
                 var stateRuneCount = GetEffectiveEncounterRuneCount(encounterLabel, entity);
 
-                var rewards = Settings.EnablePriceApi.Value
+                var rawRewards = Settings.EnablePriceApi.Value
                     ? BuildBestPreOpenPreviewEntries(encounterLabel, stateRuneCount, areaLevel, allRecipes, runeWeights)
-                        .Where(x => Settings.ExpeditionModeShowZeroPriceRewards.Value || x.Value > 0)
-                        .Where(x => Settings.ExpeditionModeMinimumValue.Value <= 0 || x.Value >= Settings.ExpeditionModeMinimumValue.Value)
                         .OrderByDescending(x => x.Value)
-                        .Take(Math.Max(1, Settings.ExpeditionModeMaxRewardsPerEncounter.Value))
                         .ToList()
                     : new List<PreOpenPreviewEntry>();
+
+                var rawAdvice = BuildRerollAdvice(entity, encounterLabel, rawRewards, allRecipes, areaLevel);
+                MaybeWriteRerollDebugSnapshot("ExpeditionMode", entity, encounterLabel, rawRewards, rawAdvice, areaLevel);
+
+                var rewards = rawRewards
+                    .Where(x => Settings.ExpeditionModeShowZeroPriceRewards.Value || x.Value > 0)
+                    .Where(x => Settings.ExpeditionModeMinimumValue.Value <= 0 || x.Value >= Settings.ExpeditionModeMinimumValue.Value)
+                    .OrderByDescending(x => x.Value)
+                    .Take(Math.Max(1, Settings.ExpeditionModeMaxRewardsPerEncounter.Value))
+                    .ToList();
 
                 var rect = encounterLabel.GetClientRect();
                 var rawScreenPos = rect.BottomLeft;
@@ -2386,7 +3987,8 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
                     HasWorldPosition = hasWorldPosition,
                     RuneCount = stateRuneCount,
                     FixedRune = BuildRuneSignature(ReadEncounterDataFixedRune(TryGetEncounterData(encounterLabel))),
-                    Rewards = rewards
+                    Rewards = rewards,
+                    Advice = rawAdvice
                 });
             }
 
@@ -2411,7 +4013,8 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
                     HasWorldPosition = hasWorldPosition,
                     RuneCount = socketsFromState,
                     FixedRune = string.Empty,
-                    Rewards = new List<PreOpenPreviewEntry>()
+                    Rewards = new List<PreOpenPreviewEntry>(),
+                    Advice = EmptyRerollAdvice
                 });
             }
         }
@@ -2447,8 +4050,10 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
             else
                 rewards = rewards.Take(Math.Max(1, Settings.ExpeditionModeMaxRewardsPerEncounter.Value)).ToList();
 
+            // ExpeditionMode never anchors text to the rune/encounter in world space.
+            // That behavior belongs to Pre-Open Preview; ExpeditionMode should remain a clean fixed list.
             var hasCurrentPosition = TryGetCurrentVisibleEncounterBottomLeft(entry.LabelSource, out var pos);
-            var useFallback = Settings.ExpeditionModeTooltipFallbackList.Value;
+            var useFallback = ExpeditionModeAlwaysUseFallbackList;
 
             if (!hasCurrentPosition)
             {
@@ -2470,12 +4075,20 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
             if (useFallback)
             {
                 var headerSize = Graphics.DrawTextWithBackground(
-                    $"Expedition #{entry.Index}  Rune {entry.RuneCount} sockets",
+                    entry.Advice.HasText
+                        ? $"Expedition #{entry.Index} Rune {entry.RuneCount} Socket : {entry.Advice.Text}"
+                        : $"Expedition #{entry.Index} Rune {entry.RuneCount} Socket",
                     new Vector2(pos.X, y),
-                    Settings.ExpeditionModeHeaderColor,
+                    entry.Advice.HasText ? entry.Advice.Color : Settings.ExpeditionModeHeaderColor.Value,
                     bg);
 
                 y += Math.Max(14, headerSize.Y);
+            }
+
+            if (!useFallback && entry.Advice.HasText)
+            {
+                var adviceSize = Graphics.DrawTextWithBackground(entry.Advice.Text, new Vector2(pos.X, y), entry.Advice.Color, bg);
+                y += Math.Max(14, adviceSize.Y);
             }
 
             if (rewards.Count == 0)
@@ -2577,6 +4190,8 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
                 continue;
 
             ImGui.TextDisabled($"Grid: {entry.GridPosition.X:0}, {entry.GridPosition.Y:0}");
+            if (entry.Advice.HasText)
+                ImGui.Text(entry.Advice.Text);
 
             for (var i = 0; i < entry.Rewards.Count; i++)
             {
@@ -2612,7 +4227,7 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
             if (!IsWithinViewport(pos))
                 continue;
 
-            DrawPreOpenPreviewText(pos, draw.Entries);
+            DrawPreOpenPreviewText(pos, draw.Entries, draw.Advice);
         }
     }
 
@@ -2724,22 +4339,30 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
         Graphics.DrawTextWithBackground(line2, new Vector2(pos.X, pos.Y + Math.Max(16, size1.Y)), color, bg);
     }
 
-    private void DrawPreOpenPreviewText(Vector2 pos, List<PreOpenPreviewEntry> entries)
+    private void DrawPreOpenPreviewText(Vector2 pos, List<PreOpenPreviewEntry> entries, RerollAdvice advice)
     {
+        var y = pos.Y;
+        var bg = Color.FromArgb(Settings.PreviewBackgroundOpacity.Value, 0, 0, 0);
+
+        if (advice.HasText)
+        {
+            var adviceSize = Graphics.DrawTextWithBackground(advice.Text, new Vector2(pos.X, y), advice.Color, bg);
+            y += Math.Max(14, adviceSize.Y);
+        }
+
         if (entries.Count == 1 && Settings.PreviewBestRewardOnly.Value)
         {
-            DrawPreOpenPreviewBestReward(pos, entries[0]);
+            DrawPreOpenPreviewBestReward(new Vector2(pos.X, y), entries[0]);
             return;
         }
 
-        var y = pos.Y;
         for (var i = 0; i < entries.Count; i++)
         {
             var entry = entries[i];
             var prefix = i == 0 ? "#1 " : i == 1 ? "#2 " : string.Empty;
             var color = i == 0 ? Settings.TopPickColor : i == 1 ? Settings.SecondPickColor : Settings.FrameColor;
             var text = entry.Count > 1 ? $"{prefix}{FormatRewardValue(entry.Value)}  {entry.Name} x{entry.Count}" : $"{prefix}{FormatRewardValue(entry.Value)}  {entry.Name}";
-            var size = Graphics.DrawTextWithBackground(text, new Vector2(pos.X, y), color, Color.FromArgb(Settings.PreviewBackgroundOpacity.Value, 0, 0, 0));
+            var size = Graphics.DrawTextWithBackground(text, new Vector2(pos.X, y), color, bg);
             y += Math.Max(14, size.Y);
         }
     }

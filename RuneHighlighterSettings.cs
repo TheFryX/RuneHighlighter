@@ -125,7 +125,8 @@ public class RuneHighlighterSettings : ISettings
     [Menu("ExpeditionMode Header Color")]
     public ColorNode ExpeditionModeHeaderColor { get; set; } = new ColorNode(Color.White);
 
-    [Menu("ExpeditionMode Tooltip Fallback List", "If encounter screen position is not drawable, show tooltip entries in a fixed list on the screen.")]
+    // Backward-compatible saved setting. ExpeditionMode now always uses the fixed tooltip list;
+    // this node is intentionally not exposed in DrawSettings and is forced on at runtime.
     public ToggleNode ExpeditionModeTooltipFallbackList { get; set; } = new ToggleNode(true);
 
     [Menu("ExpeditionMode Tooltip Fallback X")]
@@ -146,6 +147,59 @@ public class RuneHighlighterSettings : ISettings
     [Menu("ExpeditionMode Line Offscreen Margin", "How far outside the visible screen a line target may be before the line is hidden. Higher values keep lines visible from farther away.")]
     public RangeNode<int> ExpeditionModeLineOffscreenMargin { get; set; } = new RangeNode<int>(650, 0, 2000);
 
+
+
+
+    [Menu("Enable Reroll Advisor", "Shows a small KEEP / ROLL suggestion for Expedition previews. Thresholds use the currently selected price unit.")]
+    public ToggleNode EnableRerollAdvisor { get; set; } = new ToggleNode(true);
+
+    [Menu("Reroll Advisor: Reroll Below Value", "If best reward is at or below this value, advisor suggests using a roll. Uses selected price unit.")]
+    public RangeNode<int> RerollAdvisorRerollBelowValue { get; set; } = new RangeNode<int>(120, 0, 5000);
+
+    [Menu("Reroll Advisor: Keep From Value", "If best reward is at or above this value, advisor suggests holding unless you want to gamble. Uses selected price unit.")]
+    public RangeNode<int> RerollAdvisorKeepValue { get; set; } = new RangeNode<int>(300, 0, 10000);
+
+    [Menu("Reroll Advisor: Lock From Value", "If best reward is at or above this value, advisor suggests not rolling. Uses selected price unit.")]
+    public RangeNode<int> RerollAdvisorLockValue { get; set; } = new RangeNode<int>(1000, 0, 50000);
+
+    [Menu("Reroll Advisor: Show Transfer Slots", "Adds transferred rune slot info, for example T:2,4, next to the roll suggestion when available.")]
+    public ToggleNode RerollAdvisorShowTransferSlots { get; set; } = new ToggleNode(true);
+
+    [Menu("Reroll Advisor: Use Cover Score", "Adds a wave-coverage check based on rune position and transferred slots.")]
+    public ToggleNode RerollAdvisorUseRunePositionScore { get; set; } = new ToggleNode(true);
+
+    [Menu("Reroll Advisor: Show Cover Score", "Adds compact coverage info such as COVER: HIGH next to the roll suggestion.")]
+    public ToggleNode RerollAdvisorShowRuneScore { get; set; } = new ToggleNode(true);
+
+    [Menu("Reroll Advisor: Show Wave Coverage Details", "Adds the strongest rune, slot, and monster-wave coverage, for example OPULENT S1 5/5.")]
+    public ToggleNode RerollAdvisorShowWaveCoverageDetails { get; set; } = new ToggleNode(true);
+
+    [Menu("Reroll Advisor: Protect High Coverage Runes", "ON = early/high-coverage valuable runes can turn a low-value roll into MAYBE/RISK instead of ROLL YES.")]
+    public ToggleNode RerollAdvisorProtectHighCoverage { get; set; } = new ToggleNode(true);
+
+    [Menu("Reroll Advisor: Show Roll Used Status", "ON = after the reroll/scroll has already been used, replace ROLL YES/NO advice with ROLL: USED.")]
+    public ToggleNode RerollAdvisorShowRollUsedStatus { get; set; } = new ToggleNode(true);
+
+    [Menu("Reroll Advisor: Hide After Roll Used", "ON = after the reroll/scroll has already been used, hide the reroll advisor line completely.")]
+    public ToggleNode RerollAdvisorHideAfterRollUsed { get; set; } = new ToggleNode(false);
+
+    [Menu("Reroll Advisor: Transfer Bonus %", "Extra weight given to a high-value rune when its slot is reported as transferred/propagated.")]
+    public RangeNode<int> RerollAdvisorTransferBonusPercent { get; set; } = new RangeNode<int>(25, 0, 100);
+
+
+
+
+    [Menu("Reroll Debug: Log Encounter Changes", "Writes a TXT snapshot when an Expedition encounter changes after reroll/alloy/versinium. Use only while testing; the file can grow quickly.")]
+    public ToggleNode RerollDebugLogEncounterChanges { get; set; } = new ToggleNode(false);
+
+    [Menu("Reroll Debug: Deep Object Dump", "Adds public fields/properties from encounter data and selected recipe to the reroll debug TXT file.")]
+    public ToggleNode RerollDebugDeepDump { get; set; } = new ToggleNode(true);
+
+    [Menu("Reroll Debug: Clear Log On Start", "Clears the reroll debug TXT file when the plugin initializes and debug logging is enabled.")]
+    public ToggleNode RerollDebugClearLogOnStart { get; set; } = new ToggleNode(false);
+
+    [Menu("Reroll Debug: Max Snapshots", "Maximum number of encounter-change snapshots to write per plugin session.")]
+    public RangeNode<int> RerollDebugMaxSnapshots { get; set; } = new RangeNode<int>(250, 10, 2000);
 
     [Menu("Display Prices In Exalted Orbs", "ON = values are shown in Exalted Orb units.")]
     public ToggleNode DisplayPricesInExaltedOrbs { get; set; } = new ToggleNode(true);
