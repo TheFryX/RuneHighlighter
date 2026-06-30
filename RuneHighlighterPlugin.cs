@@ -3487,33 +3487,11 @@ public class RuneHighlighterPlugin : BaseSettingsPlugin<RuneHighlighterSettings>
         var fixedRunePosition = ReadEncounterDataFixedRunePosition(data);
         var fixedRune = ReadEncounterDataFixedRune(data);
 
-        if (data == null)
-            return rawEntries;
-
-        // If the game exposes the current selected recipe, prefer it. This makes Pre-Open and
-        // ExpeditionMode advice exact instead of showing the best theoretical recipe that merely
-        // shares the fixed rune/slot.
-        var selectedRecipe = ReadEncounterDataSelectedRecipe(data);
-        if (selectedRecipe != null)
-        {
-            try
-            {
-                if (selectedRecipe.MinLevelReq <= areaLevel && selectedRecipe.MaxLevelReq >= areaLevel)
-                {
-                    var selectedEntry = ToPreOpenEntry(selectedRecipe);
-                    if (selectedEntry != null)
-                    {
-                        rawEntries.Add(selectedEntry);
-                        return rawEntries;
-                    }
-                }
-            }
-            catch
-            {
-            }
-        }
-
-        if (runeCount <= 0 || fixedRunePosition < 0 || fixedRune == null)
+        // Price previews must rank every valid recipe that can be made from the encounter's
+        // fixed rune/slot. The game's SelectedRecipe can point to the currently hovered/default
+        // combination, which is often not the most valuable result and makes Pre-Open/ExpeditionMode
+        // display a cheaper rune as BEST.
+        if (data == null || runeCount <= 0 || fixedRunePosition < 0 || fixedRune == null)
             return rawEntries;
 
         var allowedRuneCounts = BuildAllowedRuneCounts(data, areaLevel, runeWeights);
